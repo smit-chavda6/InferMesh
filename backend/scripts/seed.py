@@ -98,7 +98,6 @@ def _timestamp(now: datetime, days: int, rng: random.Random) -> datetime:
 
 
 def _row(
-    i: int,
     now: datetime,
     days: int,
     projects: list[dict],
@@ -138,7 +137,9 @@ def _row(
     project = None if pr < 0.10 else projects[int(pr * len(projects)) % len(projects)]
 
     return {
-        "request_id": f"req_seed{ts.strftime('%y%m%d')}_{i:07d}",
+        # match the gateway's real id shape (req_ + 32 hex) so the Requests table
+        # shows distinct ids, not a wall of near-identical seed strings
+        "request_id": f"req_{uuid.uuid4().hex}",
         "created_at": ts,
         "provider": provider,
         "model": model,
@@ -242,8 +243,8 @@ async def seed(
 
             batch: list[dict] = []
             written = 0
-            for i in range(rows):
-                batch.append(_row(i, now, days, projects, pricing, rng))
+            for _ in range(rows):
+                batch.append(_row(now, days, projects, pricing, rng))
                 if len(batch) >= 5000:
                     await session.execute(insert(RequestLog), batch)
                     await session.commit()

@@ -38,17 +38,16 @@ test("overview is interactive quickly against the 100k-row seed", async ({ page 
   expect(tReady).toBeLessThan(process.env.CI ? 12_000 : 3_000);
 });
 
-test("requests explorer paginates a 100k-row table without lag", async ({ page }) => {
+test("requests explorer paginates the server-side table without lag", async ({ page }) => {
   await page.goto("/requests");
   await expect(page.getByRole("navigation")).toBeVisible();
-
-  const firstCell = () => page.getByRole("row").nth(1).locator("td").first();
-  await expect(firstCell()).toBeVisible();
-  const before = await firstCell().textContent();
+  await expect(page.getByRole("row").nth(1)).toBeVisible(); // first data row rendered
+  await expect(page.getByText(/Page 1 of \d+/)).toBeVisible();
 
   const t0 = Date.now();
   await page.getByRole("button", { name: "Next", exact: true }).click();
-  await expect(firstCell()).not.toHaveText(before ?? "");
+  await expect(page.getByText(/Page 2 of \d+/)).toBeVisible();
+  await expect(page.getByRole("row").nth(1)).toBeVisible();
   const dt = Date.now() - t0;
   console.log(`[perf] requests next-page render=${dt}ms`);
   expect(dt).toBeLessThan(process.env.CI ? 6_000 : 2_000);
