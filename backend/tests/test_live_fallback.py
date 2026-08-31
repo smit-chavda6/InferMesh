@@ -37,6 +37,7 @@ async def test_openai_outage_falls_back_to_gemini_live() -> None:
             "retry_max_attempts": 2,
             "retry_base_delay_seconds": 0.1,
             "provider_attempt_timeout_seconds": 15.0,
+            "cache_enabled": False,
         }
     )
     app = create_app(settings)
@@ -53,6 +54,13 @@ async def test_openai_outage_falls_back_to_gemini_live() -> None:
                 timeout=120.0,
             )
 
+    if resp.status_code != 200:
+        err = resp.json().get("error", {})
+        if "gemini:rate_limited" in str(err) or any(
+            a.get("provider") == "gemini" and a.get("outcome") == "rate_limited"
+            for a in err.get("attempts", [])
+        ):
+            pytest.skip("Gemini free-tier quota exhausted; cannot verify the fallback target")
     assert resp.status_code == 200, resp.text
     gw = resp.json()["gateway"]
     assert gw["provider"] == "gemini"

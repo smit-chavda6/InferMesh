@@ -29,6 +29,23 @@ uv run ruff check . && uv run mypy && uv run pytest
 - `pytest` needs Postgres reachable (uses `TEST_DATABASE_URL`, default
   `.../gateway_test`); DB-backed tests skip with a message if it is not.
 
+## Rate limiting & caching (Redis)
+
+- **Rate limiting**: Redis-backed sliding-window *log* (sorted set + one atomic
+  Lua script), per API key (`Authorization: Bearer sk-gw-…` → a `projects` row)
+  or per anonymous IP. Over the limit → HTTP 429 with `Retry-After` and a body
+  carrying `limit` / `retry_after`. `RATE_LIMIT_FAIL_OPEN=true` allows requests
+  through if Redis is down.
+- **Exact-match cache**: a canonicalised hash of the request (provider, model,
+  messages, generation params) keys a Redis entry (`CACHE_TTL_SECONDS`). A hit
+  returns `gateway.cache.status = "HIT"`, `cost_usd = 0`, and records
+  `cache_saved_usd` = what the call would have cost. Streamed requests are never
+  cached.
+- **Semantic cache** (optional): prompt embedding → pgvector cosine nearest-
+  neighbour in Postgres, above `SEMANTIC_CACHE_THRESHOLD`. Needs an OpenAI-family
+  embedding key/deployment; without one it **degrades silently to exact-match
+  only**.
+
 ## Cost tracking
 
 `pricing.yaml` is a **versioned, point-in-time** price list (USD per 1K tokens),

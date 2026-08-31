@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 import anthropic
 import httpx2
@@ -43,6 +44,7 @@ TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
     "postgresql+asyncpg://gateway:gateway@localhost:5432/gateway_test",
 )
+TEST_REDIS_URL = os.getenv("TEST_REDIS_URL", "redis://localhost:6379/15")
 
 
 def make_settings(**overrides: object) -> Settings:
@@ -55,6 +57,13 @@ def make_settings(**overrides: object) -> Settings:
         "gemini_api_key": "test-gemini-key",
         "default_provider": "openai",
         "database_url": TEST_DATABASE_URL,
+        "redis_url": TEST_REDIS_URL,
+        "semantic_cache_enabled": False,  # no embedding key in tests; exact-match only
+        "retry_base_delay_seconds": 0.0,
+        "retry_jitter": False,
+        # Phase 6 features are opt-in per test (they add Redis state to manage).
+        "rate_limit_enabled": False,
+        "cache_enabled": False,
     }
     base.update(overrides)
     return Settings(_env_file=None, **base)  # type: ignore[arg-type]
@@ -69,6 +78,7 @@ async def db_engine() -> AsyncIterator[AsyncEngine]:
     engine = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool)
     try:
         async with engine.begin() as conn:
+            await conn.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS vector")
             await conn.run_sync(Base.metadata.drop_all)
             await conn.run_sync(Base.metadata.create_all)
     except Exception as exc:  # noqa: BLE001 - DB not running locally -> skip, don't hard-fail
@@ -87,6 +97,25 @@ async def db_session(db_engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
     maker = async_sessionmaker(db_engine, expire_on_commit=False)
     async with maker() as session:
         yield session
+
+
+@pytest.fixture
+async def redis_ready():
+    """Flush the test Redis DB before/after; skip if Redis is unreachable."""
+    import redis.asyncio as aioredis
+
+    client = aioredis.from_url(TEST_REDIS_URL, decode_responses=True, socket_connect_timeout=2.0)
+    try:
+        await client.ping()
+    except Exception as exc:  # noqa: BLE001
+        await client.aclose()
+        pytest.skip(f"test Redis not reachable at {TEST_REDIS_URL}: {exc}")
+    await client.flushdb()
+    try:
+        yield client
+    finally:
+        await client.flushdb()
+        await client.aclose()
 
 
 # --- OpenAI mock ------------------------------------------------------------
@@ -164,10 +193,14 @@ def _openai_handler(request: httpx2.Request) -> httpx2.Response:
     return httpx2.Response(404, json={"error": {"message": f"unmocked path {path}"}})
 
 
-@pytest.fixture
-def mock_openai_client() -> openai.AsyncOpenAI:
+def new_mock_openai_client() -> openai.AsyncOpenAI:
     http_client = httpx2.AsyncClient(transport=httpx2.MockTransport(_openai_handler))
     return openai.AsyncOpenAI(api_key="test-key", http_client=http_client, max_retries=0)
+
+
+@pytest.fixture
+def mock_openai_client() -> openai.AsyncOpenAI:
+    return new_mock_openai_client()
 
 
 @pytest.fixture
@@ -262,10 +295,14 @@ def _anthropic_handler(request: httpx2.Request) -> httpx2.Response:
     return httpx2.Response(404, json={"type": "error", "error": {"message": f"unmocked {path}"}})
 
 
-@pytest.fixture
-def mock_anthropic_client() -> anthropic.AsyncAnthropic:
+def new_mock_anthropic_client() -> anthropic.AsyncAnthropic:
     http_client = httpx2.AsyncClient(transport=httpx2.MockTransport(_anthropic_handler))
     return anthropic.AsyncAnthropic(api_key="test-key", http_client=http_client, max_retries=0)
+
+
+@pytest.fixture
+def mock_anthropic_client() -> anthropic.AsyncAnthropic:
+    return new_mock_anthropic_client()
 
 
 @pytest.fixture
@@ -369,10 +406,11 @@ def mock_gemini_adapter() -> GeminiAdapter:
 @pytest.fixture
 async def app_with_mocks(
     db_engine: AsyncEngine,
+    redis_ready,
     mock_openai_client: openai.AsyncOpenAI,
     mock_anthropic_client: anthropic.AsyncAnthropic,
 ):
-    """A fully-wired app with all three providers mocked and the test DB attached."""
+    """A fully-wired app with all three providers mocked and the test DB + Redis attached."""
     settings = make_settings()
     application = create_app(settings)
     async with LifespanManager(application):
@@ -388,3 +426,23 @@ async def client(app_with_mocks) -> AsyncIterator[AsyncClient]:
     transport = ASGITransport(app=app_with_mocks)
     async with AsyncClient(transport=transport, base_url="http://gateway.test") as http_client:
         yield http_client
+
+
+@asynccontextmanager
+async def make_app(**settings_overrides: object):
+    """Build a fully-wired app (all three providers mocked) with custom settings.
+
+    Caller is responsible for ensuring db_engine / redis_ready fixtures ran.
+    """
+    settings = make_settings(**settings_overrides)
+    application = create_app(settings)
+    async with LifespanManager(application):
+        reg = application.state.registry
+        reg._adapters["openai"] = OpenAIAdapter(settings, client=new_mock_openai_client())
+        reg._adapters["anthropic"] = AnthropicAdapter(settings, client=new_mock_anthropic_client())
+        reg._adapters["gemini"] = make_gemini_adapter()
+        yield application
+
+
+def http_for(app) -> AsyncClient:
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://gateway.test")

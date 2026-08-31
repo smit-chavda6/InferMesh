@@ -43,6 +43,32 @@ class Settings(BaseSettings):
     # gateway working with no database (row-writing is best-effort regardless).
     usage_logging_enabled: bool = True
 
+    # --- Redis ---------------------------------------------------------
+    redis_url: str = "redis://localhost:6379/0"
+
+    # --- Client API keys / rate limiting --------------------------------
+    # When true, /v1/chat/completions requires a valid `Authorization: Bearer`
+    # gateway client key. When false, anonymous callers are allowed (dev/tests)
+    # and rate-limited as one bucket.
+    require_api_key: bool = False
+    rate_limit_enabled: bool = True
+    rate_limit_default_per_minute: int = Field(default=60, ge=1)
+    rate_limit_window_seconds: int = Field(default=60, ge=1)
+    rate_limit_anon_per_minute: int = Field(default=120, ge=1)
+    rate_limit_fail_open: bool = True  # if Redis is down, allow rather than 500
+
+    # --- Caching ------------------------------------------------------
+    cache_enabled: bool = True
+    cache_ttl_seconds: int = Field(default=300, ge=1)
+    cache_namespace: str = "cache:chat"
+    # Semantic cache: needs an embedding capability. Auto-disables if none is
+    # configured (degrades to exact-match only, per spec §2.1).
+    semantic_cache_enabled: bool = True
+    semantic_cache_threshold: float = Field(default=0.95, ge=0.0, le=1.0)
+    semantic_cache_embedding_model: str = "text-embedding-3-small"
+    # Azure only: the deployment name for the embedding model (if it exists).
+    azure_openai_embedding_deployment: str | None = None
+
     # --- OpenAI / Azure OpenAI --------------------------------------------------
     # A single adapter serves native OpenAI and Azure OpenAI; ``openai_mode``
     # selects which client is constructed. This keeps Azure out of a separate
@@ -102,6 +128,15 @@ class Settings(BaseSettings):
     @property
     def gemini_enabled(self) -> bool:
         return bool(self.gemini_api_key)
+
+    @property
+    def semantic_cache_available(self) -> bool:
+        """Semantic caching needs an OpenAI-family embedding capability."""
+        if not (self.semantic_cache_enabled and self.openai_api_key):
+            return False
+        if self.openai_mode == "azure":
+            return bool(self.azure_openai_embedding_deployment)
+        return True
 
     def provider_enabled(self, name: str) -> bool:
         return {

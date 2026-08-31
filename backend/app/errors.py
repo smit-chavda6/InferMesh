@@ -79,6 +79,21 @@ class AllProvidersFailedError(GatewayError):
         self.attempts = attempts or []
 
 
+class InvalidAPIKeyError(GatewayError):
+    error_type = "invalid_api_key"
+    status_code = 401
+
+
+class RateLimitExceededError(GatewayError):
+    error_type = "rate_limited"
+    status_code = 429
+
+    def __init__(self, message: str, *, limit: int, retry_after: float) -> None:
+        super().__init__(message)
+        self.limit = limit
+        self.retry_after = retry_after
+
+
 def _envelope(error_type: str, message: str, request_id: str | None) -> dict[str, object]:
     return {"error": {"type": error_type, "message": message, "request_id": request_id}}
 
@@ -99,7 +114,14 @@ def register_exception_handlers(app: FastAPI) -> None:
             body["error"]["attempts"] = [  # type: ignore[index]
                 a.model_dump() if hasattr(a, "model_dump") else a for a in attempts
             ]
-        return JSONResponse(status_code=exc.status_code, content=body)
+        headers: dict[str, str] = {}
+        retry_after = getattr(exc, "retry_after", None)
+        if retry_after is not None:
+            retry_secs = max(1, round(retry_after))
+            headers["Retry-After"] = str(retry_secs)
+            body["error"]["retry_after"] = retry_after  # type: ignore[index]
+            body["error"]["limit"] = getattr(exc, "limit", None)  # type: ignore[index]
+        return JSONResponse(status_code=exc.status_code, content=body, headers=headers or None)
 
     @app.exception_handler(RequestValidationError)
     async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:

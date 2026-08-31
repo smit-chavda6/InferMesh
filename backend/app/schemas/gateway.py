@@ -17,6 +17,7 @@ AttemptOutcome = Literal["success", "timeout", "error", "rate_limited", "bad_req
 
 class CacheInfo(BaseModel):
     status: CacheStatus = "DISABLED"
+    kind: Literal["exact", "semantic"] | None = None  # set only on a HIT
     key: str | None = None
 
 

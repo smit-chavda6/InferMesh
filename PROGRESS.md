@@ -394,3 +394,93 @@ accurate `streamed=true` row).**
    `httpx2.MockTransport` (branch on `"stream": true` in the request body);
    Gemini stays boundary-mocked (`generate_content_stream` patched to return an
    async iterator of constructed partials).
+
+---
+
+## Phase 6 — Redis (rate limiting + caching)
+
+**Status: COMPLETE — DoD verified offline and live (real cache HIT on Azure with
+`cost_usd=0` + `cache_saved_usd`; real 429 from the sliding-window limiter).**
+
+### Infra
+- `postgres` image switched to `pgvector/pgvector:pg16` (semantic cache needs
+  vector storage). `redis:7-alpine` added to the running stack.
+- Deps: `redis` 8.1, `pgvector` 0.5.
+
+### Plan (pre-phase)
+- `projects` table (name, sha256 `key_hash`, `key_prefix`, per-key rate limit,
+  status) — Phase 6 needs it to identify a caller and look up their limit; full
+  CRUD + admin JWT stay in Phase 8. Migration also adds `requests.project_id`
+  (FK) / `project_name` / `cache_saved_usd`, and the `semantic_cache` table
+  (pgvector) + `CREATE EXTENSION vector`.
+- `app/security.py`: `sk-gw-` key gen, sha256 hash, display prefix.
+- `app/redis_client.py`: async client in the lifespan.
+- `app/ratelimit.py`: sliding-window **log** in a sorted set, check-and-add in
+  one Lua script (atomic); fail-open/closed configurable.
+- `app/cache.py`: exact-match (Redis SET/GET of a canonicalised request hash) +
+  optional semantic layer (embed prompt → pgvector cosine NN search). `Embedder`
+  reports `available=False` when no OpenAI-family embedding key/deployment →
+  semantic silently degrades to exact-only (spec §2.1).
+- `app/api/deps.py`: `resolve_caller` — Bearer key → `Project` (401 if
+  missing/revoked), else anonymous bucket (`require_api_key` can force 401).
+- Chat route pipeline: caller → rate-limit (429 + `Retry-After` + logged row) →
+  cache lookup (HIT short-circuits, `cost_usd=0`, records `cache_saved_usd`) →
+  router → cache store → record.
+
+### Done (post-phase)
+- Files: `app/{security,redis_client,ratelimit,cache}.py`, `app/api/deps.py`.
+- Migration `9325628977bc` (hand-edited to add `CREATE EXTENSION vector` + the
+  pgvector import).
+- `RequestOutcome` gained `cache_saved_usd` / `precomputed_cost` / `project_*`;
+  `UsageRecorder._write` writes `cost_usd=0` + `cache_saved_usd` on a HIT.
+- `GatewayMetadata.CacheInfo` gained `kind` (`exact` | `semantic`) alongside
+  `status`.
+- **Router fix (found via a live Gemini 429):** on a fallback hop to a *different*
+  provider, the requested model is provider-specific and 404s on the fallback
+  provider — the router now clears `request.model` on fallback hops so the
+  fallback adapter uses its own default model. Applied to `execute` and
+  `execute_stream`.
+
+### Verified (commands run, output read)
+- `uv run ruff check .` / `ruff format --check .` → clean
+- `uv run mypy` (strict, `app/`) → **no issues, 34 source files**
+- `uv run pytest` (offline) → **88 passed, 8 skipped**. New: `test_security.py`
+  (3), `test_ratelimit.py` (5: limit→block, independent buckets, window frees
+  slots over ~1s, fail-open, fail-closed), `test_cache.py` (6: key stability +
+  param-sensitivity, miss→store→hit, streams never cached, disabled → no key,
+  semantic degradation), `test_phase6_api.py` (7: HTTP HIT/MISS with
+  `cost_usd=0` + `cache_saved_usd` + <100ms added latency, key-sensitivity,
+  anon 429 + clear body + `Retry-After` + logged row, **per-project** limit from
+  a DB row, invalid key → 401, `require_api_key` → 401, N requests → exactly N
+  rows).
+- Migrations: `upgrade head` from empty (with the pgvector extension) → OK;
+  `alembic check` → **clean**; `downgrade base → upgrade head` cycle → OK.
+- **Live** (`pytest -m live` → 5 passed, 3 skipped):
+  - `test_live_repeated_request_hits_cache`: 2nd identical request to Azure
+    `gpt-5.4` returned `cache.status=HIT`, `gateway.cost_usd=0`, ~3 ms; `psql`
+    row: `cache_status=HIT`, `cost_usd=0.000000`, `cache_saved_usd=0.000126`.
+  - `test_live_rate_limit_429`: 3rd anon request in a 2/min window → HTTP 429,
+    `error.type=rate_limited`, `Retry-After` header; `psql` row `http_status=429`,
+    `error_type=rate_limited`.
+  - 3 Gemini-path live tests **skipped** — Gemini's free tier is 429-throttled
+    after the day's runs; the gateway correctly falls back, which the tests
+    detect and skip rather than fail.
+
+### Decisions / deviations
+1. **`projects` table built in Phase 6** (not deferred to Phase 8) because the
+   DoD requires "a project's rate limit". Only the row + `resolve_caller` lookup
+   are here; create/rotate/revoke endpoints + admin JWT remain Phase 8.
+2. **Semantic cache present but inactive in this environment** — the Azure
+   resource has no embedding deployment and there's no native OpenAI key, so
+   `semantic_cache_available` is False and the gateway runs exact-match only.
+   The pgvector table, `Embedder`, cosine-NN query and the degradation path are
+   all implemented and unit-tested with the capability forced off; live
+   verification of a semantic hit needs an embedding key.
+3. **Streamed requests are never cached** (can't replay a token stream from a
+   stored blob without extra machinery; not worth it for this build).
+4. **Rate limiting is per API key** (`key:<project_id>`) or per anon IP
+   (`anon:<ip>`); sliding-window log via a Redis sorted set + one Lua script.
+5. Test defaults changed: `make_settings` now sets `rate_limit_enabled=False`,
+   `cache_enabled=False`, `retry_base_delay_seconds=0` — Phase 6 features are
+   opt-in per test (they add Redis state to flush). A `redis_ready` fixture
+   flushes test Redis DB 15.

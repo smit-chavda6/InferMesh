@@ -1,9 +1,9 @@
 # Full local stack (postgres + redis + backend + frontend) is wired up in Phase 7.
-# Phase 1 ships infrastructure dependencies only, so the gateway can be run
-# locally against real Postgres/Redis before the app depends on them.
+# For now: infrastructure dependencies only. Postgres uses the pgvector image so
+# the semantic cache (Phase 6) has vector storage available.
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: gateway
       POSTGRES_PASSWORD: gateway

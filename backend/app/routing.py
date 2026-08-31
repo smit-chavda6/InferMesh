@@ -142,12 +142,22 @@ class Router:
 
     # -- execution -------------------------------------------------------
 
+    def _request_for(
+        self, provider: str, request: ChatCompletionRequest, is_fallback: bool
+    ) -> ChatCompletionRequest:
+        """On a fallback hop the requested model is provider-specific and won't
+        exist on the fallback provider — clear it so that adapter uses its default."""
+        if is_fallback and request.model:
+            return request.model_copy(update={"model": ""})
+        return request
+
     async def _try_provider(
-        self, provider: str, request: ChatCompletionRequest
+        self, provider: str, request: ChatCompletionRequest, *, is_fallback: bool = False
     ) -> tuple[NormalizedCompletion | None, ProviderAttempt]:
         """Run one provider with its retry loop. Returns (completion|None, attempt log)."""
         adapter = self._registry.get(provider)
-        model = request.model or provider
+        req = self._request_for(provider, request, is_fallback)
+        model = req.model or f"{provider}:default"
         attempt = ProviderAttempt(provider=provider, model=model, outcome="error")
         max_attempts = self._settings.retry_max_attempts
         started = time.perf_counter()
@@ -156,7 +166,7 @@ class Router:
         for i in range(max_attempts):
             try:
                 completion = await asyncio.wait_for(
-                    adapter.complete(request),
+                    adapter.complete(req),
                     timeout=self._settings.provider_attempt_timeout_seconds,
                 )
                 attempt.outcome = "success"
@@ -201,8 +211,8 @@ class Router:
         log.info("router.chain", chain=chain, requested=request.provider)
 
         attempts: list[ProviderAttempt] = []
-        for provider in chain:
-            completion, attempt = await self._try_provider(provider, request)
+        for idx, provider in enumerate(chain):
+            completion, attempt = await self._try_provider(provider, request, is_fallback=idx > 0)
             attempts.append(attempt)
             if completion is not None:
                 if len(attempts) > 1 or attempt.retries:
@@ -237,9 +247,10 @@ class Router:
         attempts: list[ProviderAttempt] = []
         max_attempts = self._settings.retry_max_attempts
 
-        for provider in chain:
+        for idx, provider in enumerate(chain):
             adapter = self._registry.get(provider)
-            model = request.model or provider
+            req = self._request_for(provider, request, is_fallback=idx > 0)
+            model = req.model or f"{provider}:default"
 
             for i in range(max_attempts):
                 attempt = ProviderAttempt(
@@ -253,7 +264,7 @@ class Router:
                 upstream_model: str | None = None
                 last_finish: str | None = None
                 try:
-                    async for chunk in adapter.stream(request):
+                    async for chunk in adapter.stream(req):
                         response_id = response_id or chunk.response_id
                         created = created or chunk.created
                         upstream_model = upstream_model or chunk.model
