@@ -11,9 +11,9 @@ its output read, not assumed.
 
 1. Read `CLAUDE.md` (repo root) → then `docs/SPEC.md` §30 for phase defs/DoD.
 2. `git log --oneline` — one commit per completed phase.
-3. Current state: **Phases 1–11 COMPLETE & committed** (through commit
-   `Phase 11: Azure AI Foundry provider`). **Next: Phase 12 — polish / a11y /
-   dark-light / animations / frontend + Playwright E2E tests / measured perf.**
+3. Current state: **ALL 12 PHASES COMPLETE & committed** (through commit
+   `Phase 12: polish & testing`). The build is done. Any further work is
+   maintenance / new feature requests — there is no "next phase".
 4. Bring infra up: `docker compose up -d postgres redis` (repo root).
 5. Backend gate: `cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest`.
 6. Frontend gate: `cd frontend && npx tsc -b --noEmit && npm run build && npm run lint`.
@@ -900,3 +900,110 @@ in the backend explicit instead of a 3-tuple copied in five places.
   The provider page handles a zero-history enabled provider (shows enabled +
   zeros) correctly.
 - No DB schema change → no migration.
+
+---
+
+## Phase 12 — Polish & testing
+
+**Status: COMPLETE — frontend unit/component suite (Vitest), full §31 Playwright
+E2E journey, per-page axe a11y pass (0 critical/serious), responsive + reduced-motion
+polish, and measured perf against the 100k-row seed. Both gates green.**
+
+### Done — frontend unit / component tests (Vitest + Testing Library)
+- `vitest.config.ts` (standalone — Vite 8/rolldown vs. Vitest-bundled-Vite type
+  clash means it can't share `vite.config.ts`; JSX via esbuild), `src/test/setup.ts`
+  (happy-dom, jest-dom matchers, `matchMedia`/`ResizeObserver`/`scrollTo` stubs,
+  Recharts size shim), `src/test/render.tsx` (QueryClient+MemoryRouter wrapper).
+  happy-dom over jsdom — 5 s vs 36 s for the same suite.
+- **28 tests / 6 files**: `lib/utils` (every formatter + `providerLabel` incl.
+  unknown-id fallback), `api/client` (`qs` serialisation, `apiFetch` credentials/
+  headers, `{error:{…}}` envelope → typed `ApiError`, 204 handling), `States`
+  (ErrorState message sources + conditional Retry, EmptyState), `RangePicker`
+  (URL `?range=` read + write), `OverviewPage` (loading skeletons / KPI values
+  from payload / API-error + retry / provider-health empty state — API layer
+  mocked), `App` (auth gate: spinner → login on 401 → shell when authed).
+- `npm run test` script; `data-slot="skeleton"` + `aria-hidden` added to Skeleton.
+
+### Done — Playwright E2E (`frontend/e2e/`, spec §31)
+- `playwright.config.ts`: `webServer` boots the gateway (`e2e/backend-server.mjs`
+  loads `backend/.env`, forces `AUTH_COOKIE_SECURE=false` +
+  `ADMIN_LOGIN_MAX_ATTEMPTS=1000`) and the Vite dev server; `setup` project logs
+  in once and saves `storageState` (the gateway IP-rate-limits `/v1/auth/login`,
+  so every spec reuses the session). `PW_NO_SERVER=1` runs against a live stack.
+- **`dashboard.spec.ts`** — the §31 sequence: login → overview loads real data →
+  requests filter-by-provider + details drawer → debounced search writes
+  `?search=` → cost breakdown segmented control re-queries → range picker rewrites
+  `?range=` → providers page lists all four → system health deps → live activity
+  pause/resume → theme toggle persists across reload → API-key create/reveal-once/
+  revoke → forced-500 renders the retry affordance. **11 tests.**
+- **`a11y.spec.ts`** — `@axe-core/playwright` on all 10 pages; asserts **zero
+  critical/serious** WCAG 2 A/AA violations. **10 tests.**
+- **`perf.spec.ts`** / **`responsive.spec.ts`** — see below.
+- All **25 Playwright tests pass** (`npx playwright test`).
+- New `.github/workflows/ci.yml` jobs: `frontend` (tsc + lint + vitest + build)
+  and `e2e` (pg/redis services → `uv sync` → migrate → `seed --rows 3000` →
+  `playwright install chromium` → `playwright test`, report uploaded as an
+  artifact). Perf ceilings relax under `CI` (cold Vite transform).
+
+### Done — a11y fixes surfaced by the axe pass
+- **Colour contrast (WCAG AA 4.5:1)** — `--text-faint` darkened in light
+  (`#8a93a2`→`#5c6472`) and lightened in dark (`#6b7480`→`#949dab`); `--accent`
+  light `#6366f1`→`#4f46e5` (indigo-600) so small white-on-accent text (range
+  picker, segmented control) clears AA; `--chart-1` light matched.
+- **`aria-valid-attr-value`** on Costs — the "By model/provider/project" control
+  was a Radix `Tabs` with `aria-controls` pointing at a panel that never rendered.
+  Replaced with a new `SegmentedControl` primitive (`role="group"` +
+  `aria-pressed` buttons).
+- **`scrollable-region-focusable`** — `Table`'s `overflow-x-auto` wrapper got
+  `role="region"` + `aria-label` + `tabIndex={0}` + a focus ring; `<main>` is
+  `tabIndex={0}` with `aria-label` (also the skip-link target).
+- **Dialog/Sheet names** — Radix `Dialog.Content` without a `Title` fails a11y;
+  `SheetContent`/`DialogContent` now render sr-only `Title`/`Description` from
+  `title`/`description` props (RequestDrawer, ⌘K palette, mobile nav wired up),
+  `Close` buttons got `aria-label`.
+- **Label association** — the Create-project inputs got `htmlFor`/`id`.
+- **Skip link** — "Skip to content" `<a href="#main">` (sr-only until focused).
+- **`prefers-reduced-motion`** — global rule zeroes animations/transitions/
+  smooth-scroll.
+- Provider-health rows on the Overview now use `providerLabel()` (last raw
+  `capitalize {p.provider}` from Phase 11 removed).
+
+### Done — responsive
+- `responsive.spec.ts` at 412×915 (Pixel 7): desktop sidebar hidden, **no
+  horizontal page overflow**, hamburger opens the nav Sheet and navigation works.
+  (Layout was already `lg:` sidebar / mobile Sheet + `sm:` grid breakpoints;
+  the test locks it in.)
+
+### Measured performance (spec §32 — real numbers, local dev server, 100k-row seed)
+- **Time to first KPI value rendered on the Overview: ~0.55 s** (`domContentLoaded`
+  ~0.27 s) — target was "sub-2s TTI"; comfortably under.
+- **Requests explorer next-page (server-paginated over 100k rows): ~0.15 s.**
+- Production bundle: **835 kB JS / 246 kB gzip**, 29 kB CSS / 6.5 kB gzip
+  (single chunk; route-level code-splitting is a possible future optimisation,
+  not needed to hit the target).
+- Backend aggregation endpoints against the same 100k rows stay **<~80 ms
+  server-side** (measured in Phase 9, unchanged).
+
+### Verified (commands run, output read)
+- `cd frontend && npx tsc -b --noEmit && npm run build && npm run lint && npm run test`
+  → tsc clean, build ✓, `oxlint` 0 warnings, **28 unit tests pass**.
+- `cd frontend && npx playwright test` → **25 pass** (setup + 11 journey + 10 axe
+  + 2 perf + 1 responsive), against the live gateway + 100k seed.
+- `cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy`
+  → clean; `uv run pytest` → **156 passed, 8 skipped** (the login-limit config
+  change added no tests but broke none; `admin_login_max_attempts` /
+  `admin_login_window_seconds` are new `Settings` fields replacing the hardcoded
+  `_LOGIN_LIMIT`).
+- `uv run alembic check` → no drift (no schema change this phase).
+
+### Deviations / notes
+- The "Frontend tests" bullet in §31 also lists "routing tests" — covered by
+  `App.test.tsx` (auth-gate routing) + the E2E nav assertions rather than a
+  dedicated router unit test.
+- Playwright uses its own bundled Chromium (headless shell) — the Claude browser
+  extension was still not connected, but that's irrelevant here: the E2E suite
+  *is* the visual/interaction verification that was deferred from Phases 10–11.
+- CI `e2e` job seeds only 3 000 rows (speed); the perf numbers above are from a
+  local 100 002-row DB.
+- Bundle is still one chunk. `React.lazy` per route would trim first load but the
+  measured TTI already beats the target, so it's left as a noted future option.

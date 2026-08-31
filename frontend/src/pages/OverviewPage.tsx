@@ -7,7 +7,7 @@ import { StatusDot } from "@/components/StatusDot";
 import { EmptyState, ErrorState, LoadingBlock, LoadingCards } from "@/components/States";
 import { useProviderHealth, useUsageSummary, useUsageTimeseries } from "@/api/queries";
 import { useRange } from "@/hooks/useRange";
-import { fmtCompact, fmtInt, fmtMs, fmtPct, fmtUsd } from "@/lib/utils";
+import { fmtCompact, fmtInt, fmtMs, fmtPct, fmtUsd, providerLabel } from "@/lib/utils";
 
 export function OverviewPage() {
   const [range] = useRange();
@@ -114,9 +114,9 @@ export function OverviewPage() {
             <div className="divide-y divide-border">
               {health.data.providers.map((p) => (
                 <div key={p.provider} className="flex items-center gap-4 py-2.5 text-sm">
-                  <div className="flex w-32 items-center gap-2 font-medium capitalize">
+                  <div className="flex w-40 items-center gap-2 font-medium">
                     <StatusDot status={p.status} />
-                    {p.provider}
+                    {providerLabel(p.provider)}
                   </div>
                   <div className="w-24 capitalize text-text-muted">{p.status}</div>
                   <div className="w-24 tabular-nums">{fmtPct(p.success_rate)}</div>

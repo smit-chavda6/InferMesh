@@ -16,8 +16,8 @@
   --border-strong: #d1d5db;
   --text: #0b0d12;
   --text-muted: #5b6472;
-  --text-faint: #8a93a2;
-  --accent: #6366f1;
+  --text-faint: #5c6472; /* WCAG AA (4.5:1) on white and on --bg-subtle */
+  --accent: #4f46e5; /* indigo-600 — white text on it clears AA for small type */
   --accent-fg: #ffffff;
   --accent-subtle: #eef0ff;
   --ok: #15803d;
@@ -28,7 +28,7 @@
   --err-bg: #fee2e2;
   --info: #1d4ed8;
   --info-bg: #dbeafe;
-  --chart-1: #6366f1;
+  --chart-1: #4f46e5;
   --chart-2: #22c55e;
   --chart-3: #f59e0b;
   --chart-4: #ec4899;
@@ -45,7 +45,7 @@
   --border-strong: #333a45;
   --text: #e6e9ef;
   --text-muted: #9aa4b2;
-  --text-faint: #6b7480;
+  --text-faint: #949dab; /* WCAG AA (4.5:1) on --panel and --bg */
   --accent: #818cf8;
   --accent-fg: #0a0c10;
   --accent-subtle: #1b1f3a;
@@ -137,4 +137,17 @@ body {
 }
 .animate-in {
   animation: fade-in 0.15s ease-out;
+}
+
+/* Respect the OS "reduce motion" setting — kill transitions, animations, and
+   smooth scrolling for anyone who has asked for less movement. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -6,6 +6,8 @@ import { fileURLToPath, URL } from "node:url";
 // Dev server proxies the API so the browser sees one origin — no CORS, and the
 // admin session cookie is first-party. In production the frontend is served from
 // the same origin as the gateway (or behind a reverse proxy).
+// Test config lives in vitest.config.ts (kept separate to avoid the Vite 8 /
+// Vitest dual-package type clash).
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {

@@ -38,8 +38,27 @@ with the `ADMIN_EMAIL` / `ADMIN_PASSWORD` from `backend/.env`.
 ## Gate
 
 ```bash
-npx tsc -b --noEmit && npm run build && npm run lint
+npx tsc -b --noEmit && npm run build && npm run lint && npm run test
 ```
+
+## Testing
+
+- **Unit / component** — Vitest + Testing Library (happy-dom), API layer mocked.
+  `vitest.config.ts` is separate from `vite.config.ts` (Vite 8 / Vitest type clash).
+  ```bash
+  npm run test          # once
+  npm run test:watch
+  ```
+- **End-to-end** — Playwright, `e2e/` (spec §31 journey + per-page axe a11y +
+  perf + responsive). `playwright.config.ts` boots the gateway
+  (`e2e/backend-server.mjs` reads `backend/.env`) and the Vite dev server, so
+  Postgres/Redis must be up and the DB seeded (`cd backend && uv run python -m
+  scripts.seed --truncate`).
+  ```bash
+  npx playwright install chromium   # first run
+  npm run e2e
+  PW_NO_SERVER=1 npm run e2e         # against an already-running stack
+  ```
 
 ## Layout
 
@@ -55,5 +74,4 @@ npx tsc -b --noEmit && npm run build && npm run lint
 ## Production
 
 The built SPA in `dist/` is meant to be served same-origin as the gateway (or
-behind a reverse proxy that routes `/v1` + `/health` to it). Packaging it into the
-compose stack is Phase 12.
+behind a reverse proxy that routes `/v1` + `/health` to it).

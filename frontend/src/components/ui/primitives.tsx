@@ -105,10 +105,52 @@ export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttribute
 );
 Input.displayName = "Input";
 
+/* ---------------- SegmentedControl ---------------- */
+export function SegmentedControl<T extends string>({
+  value,
+  onValueChange,
+  options,
+  "aria-label": ariaLabel,
+  className,
+}: {
+  value: T;
+  onValueChange: (v: T) => void;
+  options: readonly { value: T; label: string }[];
+  "aria-label": string;
+  className?: string;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={ariaLabel}
+      className={cn("inline-flex rounded-md border border-border bg-panel p-0.5", className)}
+    >
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          aria-pressed={value === o.value}
+          onClick={() => onValueChange(o.value)}
+          className={cn(
+            "rounded px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60",
+            value === o.value
+              ? "bg-accent text-accent-fg"
+              : "text-text-muted hover:bg-bg-subtle hover:text-text",
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /* ---------------- Skeleton ---------------- */
 export function Skeleton({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
+      data-slot="skeleton"
+      aria-hidden="true"
       className={cn("animate-pulse rounded-md bg-border/60", className)}
       {...props}
     />

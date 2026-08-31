@@ -27,12 +27,22 @@ export function AppLayout() {
 
   return (
     <div className="flex h-full">
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-[60] focus:rounded-md focus:bg-accent focus:px-3 focus:py-1.5 focus:text-sm focus:text-accent-fg"
+      >
+        Skip to content
+      </a>
       <aside className="hidden w-60 shrink-0 border-r border-border bg-panel lg:block">
         <Sidebar />
       </aside>
 
       <Sheet open={mobileNav} onOpenChange={setMobileNav}>
-        <SheetContent className="max-w-[16rem] p-0 lg:hidden">
+        <SheetContent
+          className="max-w-[16rem] p-0 lg:hidden"
+          title="Navigation"
+          description="Dashboard sections"
+        >
           <Sidebar onNavigate={() => setMobileNav(false)} />
         </SheetContent>
       </Sheet>
@@ -74,7 +84,14 @@ export function AppLayout() {
           </Button>
         </header>
 
-        <main className="flex-1 overflow-y-auto">
+        {/* tabIndex=0: doubles as the skip-link target and makes the scroll
+            region keyboard-operable (axe: scrollable-region-focusable). */}
+        <main
+          id="main"
+          tabIndex={0}
+          aria-label="Main content"
+          className="flex-1 overflow-y-auto outline-none focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+        >
           <div className="mx-auto max-w-[1400px] p-4 sm:p-6">
             <Outlet />
           </div>

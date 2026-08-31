@@ -13,22 +13,29 @@ observability dashboard. Continuity across sessions depends on three files:
 
 ## Where the build is (update this line when a phase completes)
 
-**Phases 1–11 COMPLETE and committed** (basic gateway → multi-provider → reliability
-→ persistence/cost → SSE streaming → Redis rate-limiting + caching → production
-hardening → dashboard backend APIs → seed script → React/TS dashboard UI →
-**Azure AI Foundry provider**). The **backend** is done and live-verified against
-the Azure + Gemini keys in `backend/.env`; there are now **four** providers
-(`openai`/azure, `anthropic`, `gemini`, `azure_foundry` — the last is the Azure
-AI Model Inference `/models` API, distinct from `OPENAI_MODE=azure`, live-verified
-end-to-end). `backend/scripts/seed.py` fills the DB with ~100k realistic
-historical rows (`uv run python -m scripts.seed --truncate`). The **frontend**
-(`frontend/`, Vite + Tailwind v4 + TanStack Query + Recharts + Radix; branded
-**InferMesh**) has every §6–§24 page wired to a real §27 endpoint through a thin
-typed client; `tsc` + `build` + `oxlint` are clean and every consumed endpoint was
-verified returning real data through the live dev proxy. Dev: `cd frontend &&
-npm run dev` (proxies `/v1` + `/health` → `127.0.0.1:8000`).
-**Next: Phase 12 — polish, a11y, responsive, dark/light, animations, frontend +
-Playwright E2E tests, measured perf against the 100k-row seed.**
+**ALL 12 PHASES COMPLETE and committed.** (basic gateway → multi-provider →
+reliability → persistence/cost → SSE streaming → Redis rate-limiting + caching →
+production hardening → dashboard backend APIs → seed script → React/TS dashboard
+UI → Azure AI Foundry provider → **polish & testing**). The build is finished;
+there is no "next phase" — further work is maintenance or new feature requests.
+
+- **Backend** (`backend/`): FastAPI async gateway, live-verified against the Azure
+  + Gemini keys in `backend/.env`. **Four** providers (`openai`/azure,
+  `anthropic`, `gemini`, `azure_foundry` — the Azure AI Model Inference `/models`
+  API, distinct from `OPENAI_MODE=azure`). `scripts/seed.py` fills the DB with
+  ~100k realistic rows. Gate: `uv run ruff check . && uv run ruff format --check .
+  && uv run mypy && uv run pytest` → **156 passed / 8 skipped**.
+- **Frontend** (`frontend/`, Vite + Tailwind v4 + TanStack Query + Recharts +
+  Radix; branded **InferMesh**): every §6–§24 page on a real §27 endpoint through
+  a thin typed client. Gate: `npx tsc -b --noEmit && npm run build && npm run lint
+  && npm run test` (**28 Vitest** unit/component tests). E2E: `npx playwright
+  test` (**25** — §31 journey + per-page axe a11y + perf + responsive), needs
+  Postgres/Redis up and the DB seeded. Dev: `npm run dev` (proxies `/v1` +
+  `/health` → `127.0.0.1:8000`).
+- **CI** (`.github/workflows/ci.yml`): `backend`, `frontend`, `e2e`,
+  `docker-build` jobs.
+- Measured: Overview time-to-first-KPI ~0.55 s and Requests next-page ~0.15 s
+  against the 100k-row seed; production bundle 246 kB gzip; a11y 0 critical/serious.
 
 ## How to work
 

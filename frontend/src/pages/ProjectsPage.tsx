@@ -110,12 +110,23 @@ function CreateProjectDialog({ onCreated }: { onCreated: (p: CreatedProject) => 
           }}
         >
           <div className="space-y-1">
-            <label className="text-xs font-medium text-text-muted">Project name</label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
+            <label className="text-xs font-medium text-text-muted" htmlFor="new-project-name">
+              Project name
+            </label>
+            <Input
+              id="new-project-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              autoFocus
+            />
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-medium text-text-muted">Rate limit (req/min)</label>
+            <label className="text-xs font-medium text-text-muted" htmlFor="new-project-limit">
+              Rate limit (req/min)
+            </label>
             <Input
+              id="new-project-limit"
               type="number"
               min={1}
               value={limit}

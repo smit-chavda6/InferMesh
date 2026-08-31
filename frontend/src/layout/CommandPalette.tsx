@@ -48,7 +48,11 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-w-xl p-0">
+      <DialogContent
+        className="max-w-xl p-0"
+        title="Command menu"
+        description="Jump to a page or filter requests"
+      >
         <Command shouldFilter label="Global command menu" className="overflow-hidden">
           <div className="flex items-center gap-2 border-b border-border px-3">
             <Search className="size-4 text-text-faint" />

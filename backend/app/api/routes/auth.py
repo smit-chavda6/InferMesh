@@ -13,9 +13,6 @@ from app.ratelimit import RateLimiter
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
 log = get_logger(__name__)
 
-_LOGIN_LIMIT = 10  # attempts
-_LOGIN_WINDOW = 300  # seconds, per client IP
-
 
 class LoginBody(BaseModel):
     email: str = Field(min_length=3, max_length=254)
@@ -31,8 +28,13 @@ async def login(body: LoginBody, request: Request, response: Response) -> AdminI
     auth: AdminAuth = request.app.state.admin_auth
     limiter: RateLimiter = request.app.state.rate_limiter
 
+    settings = request.app.state.settings
     client_ip = request.client.host if request.client else "unknown"
-    rl = await limiter.check(f"login:{client_ip}", _LOGIN_LIMIT, _LOGIN_WINDOW)
+    rl = await limiter.check(
+        f"login:{client_ip}",
+        settings.admin_login_max_attempts,
+        settings.admin_login_window_seconds,
+    )
     if not rl.allowed:
         raise AdminAuthError("too many login attempts; try again later")
 

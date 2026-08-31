@@ -1,6 +1,11 @@
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/overlays";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  SegmentedControl,
+} from "@/components/ui/primitives";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { PageHeader } from "@/components/PageHeader";
 import { RangePicker } from "@/components/RangePicker";
@@ -72,13 +77,16 @@ export function CostsPage() {
       <Card className="mt-5">
         <CardHeader className="flex-row items-center justify-between">
           <CardTitle>Breakdown</CardTitle>
-          <Tabs value={groupBy} onValueChange={(v) => setGroupBy(v as typeof groupBy)}>
-            <TabsList>
-              <TabsTrigger value="model">By model</TabsTrigger>
-              <TabsTrigger value="provider">By provider</TabsTrigger>
-              <TabsTrigger value="project">By project</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <SegmentedControl
+            aria-label="Break cost down by"
+            value={groupBy}
+            onValueChange={setGroupBy}
+            options={[
+              { value: "model", label: "By model" },
+              { value: "provider", label: "By provider" },
+              { value: "project", label: "By project" },
+            ]}
+          />
         </CardHeader>
         <CardContent>
           {breakdown.isLoading ? (

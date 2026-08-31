@@ -14,8 +14,14 @@ export const DialogClose = DialogPrimitive.Close;
 export function DialogContent({
   className,
   children,
+  title,
+  description,
   ...props
-}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>) {
+}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+  /** sr-only fallbacks for dialogs whose body is not a titled form (e.g. the ⌘K palette). */
+  title?: string;
+  description?: string;
+}) {
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[1px]" />
@@ -26,8 +32,17 @@ export function DialogContent({
         )}
         {...props}
       >
+        {title != null && (
+          <DialogPrimitive.Title className="sr-only">{title}</DialogPrimitive.Title>
+        )}
+        {description != null && (
+          <DialogPrimitive.Description className="sr-only">{description}</DialogPrimitive.Description>
+        )}
         {children}
-        <DialogPrimitive.Close className="absolute right-4 top-4 text-text-faint hover:text-text">
+        <DialogPrimitive.Close
+          aria-label="Close"
+          className="absolute right-4 top-4 text-text-faint hover:text-text"
+        >
           <X className="size-4" />
         </DialogPrimitive.Close>
       </DialogPrimitive.Content>
@@ -65,8 +80,14 @@ export const SheetClose = DialogPrimitive.Close;
 export function SheetContent({
   className,
   children,
+  title,
+  description,
   ...props
-}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>) {
+}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+  /** Accessible name/description — rendered sr-only so screen readers announce the drawer. */
+  title?: string;
+  description?: string;
+}) {
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[1px]" />
@@ -77,8 +98,15 @@ export function SheetContent({
         )}
         {...props}
       >
+        <DialogPrimitive.Title className="sr-only">{title ?? "Details"}</DialogPrimitive.Title>
+        <DialogPrimitive.Description className="sr-only">
+          {description ?? "Detail panel"}
+        </DialogPrimitive.Description>
         {children}
-        <DialogPrimitive.Close className="absolute right-4 top-4 text-text-faint hover:text-text">
+        <DialogPrimitive.Close
+          aria-label="Close"
+          className="absolute right-4 top-4 text-text-faint hover:text-text"
+        >
           <X className="size-4" />
         </DialogPrimitive.Close>
       </DialogPrimitive.Content>

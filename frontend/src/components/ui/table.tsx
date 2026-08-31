@@ -1,9 +1,19 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-export function Table({ className, ...props }: React.HTMLAttributes<HTMLTableElement>) {
+export function Table({
+  className,
+  scrollLabel = "Table",
+  ...props
+}: React.HTMLAttributes<HTMLTableElement> & { scrollLabel?: string }) {
   return (
-    <div className="w-full overflow-x-auto rounded-lg border border-border">
+    // tabIndex + role make the horizontally-scrollable region reachable by keyboard
+    <div
+      role="region"
+      aria-label={scrollLabel}
+      tabIndex={0}
+      className="w-full overflow-x-auto rounded-lg border border-border focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+    >
       <table className={cn("w-full border-collapse text-sm", className)} {...props} />
     </div>
   );

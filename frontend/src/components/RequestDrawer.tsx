@@ -21,7 +21,7 @@ export function RequestDrawer({ id, onClose }: { id: string | null; onClose: () 
 
   return (
     <Sheet open={!!id} onOpenChange={(v) => !v && onClose()}>
-      <SheetContent>
+      <SheetContent title="Request detail" description="Full record for a single gateway request">
         <div className="border-b border-border p-5">
           <div className="text-xs text-text-faint">Request</div>
           <div className="mt-0.5 break-all font-mono text-sm">{id}</div>

@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     auth_cookie_secure: bool = True  # set false for local plain-HTTP dev
     auth_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
     bcrypt_rounds: int = Field(default=12, ge=4, le=16)  # tests drop this to 4
+    # Brute-force guard on POST /v1/auth/login, per client IP.
+    admin_login_max_attempts: int = Field(default=10, ge=1)
+    admin_login_window_seconds: int = Field(default=300, ge=1)
 
     # --- Request limits ---------------------------------------------------
     max_messages_per_request: int = Field(default=256, ge=1)

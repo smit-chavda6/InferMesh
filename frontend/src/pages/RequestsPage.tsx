@@ -20,20 +20,28 @@ export function RequestsPage() {
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<string>("created_at");
   const [direction, setDirection] = useState<"asc" | "desc">("desc");
-  const [searchInput, setSearchInput] = useState(params.get("search") ?? "");
-  const [search, setSearch] = useState(params.get("search") ?? "");
   const [openId, setOpenId] = useState<string | null>(null);
 
   const provider = params.get("provider") ?? undefined;
   const status = (params.get("status") as "success" | "error" | null) ?? undefined;
   const fallbackOnly = params.get("fallback_only") === "1";
   const cacheHitOnly = params.get("cache_hit_only") === "1";
+  // Search lives in the URL like every other filter — shareable, survives reload,
+  // and the ⌘K request-ID jump lands here. `searchInput` is just the typing buffer.
+  const search = params.get("search") ?? "";
+  const [searchInput, setSearchInput] = useState(search);
 
-  // debounce search
   useEffect(() => {
-    const t = setTimeout(() => setSearch(searchInput.trim()), 350);
+    const t = setTimeout(() => {
+      const next = searchInput.trim();
+      const p = new URLSearchParams(params);
+      if (next === (p.get("search") ?? "")) return;
+      if (next) p.set("search", next);
+      else p.delete("search");
+      setParams(p, { replace: true });
+    }, 350);
     return () => clearTimeout(t);
-  }, [searchInput]);
+  }, [searchInput, params, setParams]);
 
   // Snap back to page 1 whenever the query that feeds the table changes.
   // Done during render (React's "adjust state on prop change" pattern) rather
