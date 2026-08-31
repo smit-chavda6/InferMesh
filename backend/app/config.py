@@ -61,6 +61,23 @@ class Settings(BaseSettings):
     gemini_default_model: str = "gemini-3.6-flash"
     gemini_timeout_seconds: float = Field(default=60.0, gt=0)
 
+    # --- Reliability: retry / backoff / fallback ---------------------------
+    # Total attempts per provider before giving up on it (1 initial + N-1 retries).
+    retry_max_attempts: int = Field(default=3, ge=1, le=10)
+    retry_base_delay_seconds: float = Field(default=0.5, ge=0)
+    retry_max_delay_seconds: float = Field(default=8.0, ge=0)
+    retry_backoff_multiplier: float = Field(default=2.0, ge=1.0)
+    retry_jitter: bool = True
+    # Hard ceiling on a single provider attempt (backstop for a hung SDK call).
+    provider_attempt_timeout_seconds: float = Field(default=90.0, gt=0)
+    # When a request names no provider, try this ordered chain (filtered to
+    # enabled providers). JSON list in env, e.g. FALLBACK_CHAIN='["openai","gemini"]'.
+    fallback_enabled: bool = True
+    fallback_chain: list[str] = Field(default_factory=lambda: ["openai", "anthropic", "gemini"])
+    # If a request DOES name a provider and it fails, still fall through to the
+    # rest of the chain (vs. failing hard on the named provider only).
+    fallback_on_explicit_provider: bool = True
+
     @property
     def openai_enabled(self) -> bool:
         if not self.openai_api_key:

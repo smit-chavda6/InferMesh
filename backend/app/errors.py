@@ -74,6 +74,10 @@ class AllProvidersFailedError(GatewayError):
     error_type = "all_providers_failed"
     status_code = 502
 
+    def __init__(self, message: str, attempts: list[object] | None = None) -> None:
+        super().__init__(message)
+        self.attempts = attempts or []
+
 
 def _envelope(error_type: str, message: str, request_id: str | None) -> dict[str, object]:
     return {"error": {"type": error_type, "message": message, "request_id": request_id}}
@@ -89,10 +93,13 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code=exc.status_code,
             message=exc.message,
         )
-        return JSONResponse(
-            status_code=exc.status_code,
-            content=_envelope(exc.error_type, exc.message, request_id),
-        )
+        body = _envelope(exc.error_type, exc.message, request_id)
+        attempts = getattr(exc, "attempts", None)
+        if attempts:
+            body["error"]["attempts"] = [  # type: ignore[index]
+                a.model_dump() if hasattr(a, "model_dump") else a for a in attempts
+            ]
+        return JSONResponse(status_code=exc.status_code, content=body)
 
     @app.exception_handler(RequestValidationError)
     async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:

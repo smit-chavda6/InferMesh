@@ -1,9 +1,9 @@
 """``POST /v1/chat/completions`` — the gateway's core endpoint.
 
-Phase 1 scope: validate, route to a single provider, normalize the response, and
-attach ``gateway`` metadata. Retry/backoff/fallback (Phase 3), caching &
-rate-limiting (Phase 6), persistence & cost (Phase 4), and streaming (Phase 5)
-extend this handler in later phases.
+Current scope: validate, run the request through the provider router (retry +
+backoff + fallback), normalize the response, and attach ``gateway`` metadata
+describing how it was actually served. Caching & rate-limiting (Phase 6),
+persistence & cost (Phase 4), and streaming (Phase 5) extend this handler later.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from dataclasses import asdict
 from fastapi import APIRouter, HTTPException, Request
 
 from app.logging_config import get_logger
-from app.providers.registry import ProviderRegistry
+from app.routing import Router
 from app.schemas.chat import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -37,59 +37,59 @@ async def create_chat_completion(
     payload: ChatCompletionRequest, request: Request
 ) -> ChatCompletionResponse:
     request_id: str = request.state.request_id
-    registry: ProviderRegistry = request.app.state.registry
+    gateway_router: Router = request.app.state.router
 
     if payload.stream:
         # Streaming lands in Phase 5; fail loudly rather than silently ignoring it.
         raise HTTPException(status_code=501, detail="streaming is not implemented until Phase 5")
 
-    provider_name = registry.resolve(payload.provider)
-    adapter = registry.get(provider_name)
-
     log.info(
         "chat.dispatch",
-        provider=provider_name,
+        requested_provider=payload.provider,
         model=payload.model,
         messages=len(payload.messages),
     )
 
     started = time.perf_counter()
-    result = await adapter.complete(payload)
+    result = await gateway_router.execute(payload)
     latency_ms = round((time.perf_counter() - started) * 1000, 2)
 
+    completion = result.completion
     log.info(
         "chat.completed",
-        provider=provider_name,
-        upstream_model=result.model,
-        prompt_tokens=result.usage.prompt_tokens,
-        completion_tokens=result.usage.completion_tokens,
+        provider=result.provider_used,
+        upstream_model=completion.model,
+        fallback_used=result.fallback_used,
+        total_retries=result.total_retries,
+        prompt_tokens=completion.usage.prompt_tokens,
+        completion_tokens=completion.usage.completion_tokens,
         latency_ms=latency_ms,
     )
 
     return ChatCompletionResponse(
-        id=result.id,
-        created=result.created,
-        model=payload.model or result.model,
+        id=completion.id,
+        created=completion.created,
+        model=payload.model or completion.model,
         choices=[
             ResponseChoice(
                 index=0,
                 message=ResponseMessage(
-                    role=result.role,
-                    content=result.content,
-                    tool_calls=result.tool_calls,
+                    role=completion.role,
+                    content=completion.content,
+                    tool_calls=completion.tool_calls,
                 ),
-                finish_reason=result.finish_reason,
+                finish_reason=completion.finish_reason,
             )
         ],
-        usage=Usage(**asdict(result.usage)),
+        usage=Usage(**asdict(completion.usage)),
         gateway=GatewayMetadata(
             request_id=request_id,
-            provider=provider_name,
-            model=payload.model or result.model,
-            upstream_model=result.model,
+            provider=result.provider_used,
+            model=payload.model or completion.model,
+            upstream_model=completion.model,
             cache=CacheInfo(status="DISABLED"),
-            fallback=FallbackInfo(used=False, chain=[]),
-            retries=0,
+            fallback=FallbackInfo(used=result.fallback_used, chain=result.attempts),
+            retries=result.total_retries,
             latency_ms=latency_ms,
         ),
     )

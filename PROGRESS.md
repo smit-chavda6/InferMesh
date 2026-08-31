@@ -186,3 +186,61 @@ shape; Anthropic live leg pending a key, same honest gap as Phase 1's native Ope
    async transport stack is more involved than a single httpx client; the
    translation code (`_build_contents`/`_build_config`/`_usage`) still executes
    against a constructed response, and the live tests exercise the real transport.
+
+---
+
+## Phase 3 — Reliability
+
+**Status: COMPLETE — DoD verified with injected failures (unit + HTTP layer) and
+live (real OpenAI outage → Gemini fallback).**
+
+### Plan (pre-phase)
+- New `app/routing.py` with a `Router` owning retry + backoff + fallback (not in
+  adapters, not in the route handler).
+- Per-provider retry loop (`retry_max_attempts`), exponential backoff with jitter,
+  retry only on retryable outcomes (timeout / rate-limit / upstream error); stop
+  immediately on `bad_request`.
+- On a provider being exhausted, advance through an ordered provider chain; if all
+  fail, raise `AllProvidersFailedError` carrying the full `ProviderAttempt` log.
+- Hard per-attempt ceiling via `asyncio.wait_for` (backstop for a hung SDK call).
+- Wire into `main.py` lifespan (`app.state.router`) and the chat route; populate
+  `gateway.fallback.{used,chain}` and `gateway.retries` from the attempt log.
+
+### Done (post-phase)
+- `app/routing.py`: `Router`, `ExecutionResult`, `_backoff_delay`, `_provider_chain`.
+  Injectable `sleep` for deterministic tests.
+- `Settings`: `retry_max_attempts`, `retry_base_delay_seconds`,
+  `retry_max_delay_seconds`, `retry_backoff_multiplier`, `retry_jitter`,
+  `provider_attempt_timeout_seconds`, `fallback_enabled`, `fallback_chain` (JSON
+  list in env), `fallback_on_explicit_provider`.
+- `AllProvidersFailedError` now carries `attempts`; the error handler renders them
+  under `error.attempts` in the 502 body.
+- `gateway.fallback.chain` is always populated (1+ entries) — the "what actually
+  happened" log the details drawer (§14) renders; `fallback.used` is true only
+  when >1 distinct provider was tried.
+
+### Design decisions
+- **`bad_request` (upstream 4xx) is not retried and does not fall back** — it is
+  treated as a caller error that would fail on every provider; fail fast with the
+  original `ProviderBadRequestError` (400). `auth`/`not_configured` likewise are
+  not retryable. Retryable: `timeout`, `rate_limited`, generic `error` (5xx / conn).
+- **Explicit `provider` still falls through** the rest of the chain by default
+  (`fallback_on_explicit_provider=true`) so the demo works with or without the
+  field; set false to make a named provider a hard directive.
+- Adapters run with **SDK retries disabled** (`max_retries=0` / `attempts=1`); the
+  gateway is the single owner of retry policy.
+
+### Verified (commands run, output read)
+- `uv run ruff check .` / `ruff format --check .` → clean
+- `uv run mypy` (strict, `app/`) → **no issues found in 21 source files**
+- `uv run pytest` (offline) → **46 passed, 3 skipped**. New:
+  `tests/test_routing.py` (10 cases: retry-then-succeed, exponential-backoff
+  growth+cap, fallback to next provider, rate-limit retryable, bad-request no
+  retry/no fallback, all-providers-fail aggregate, explicit-provider fallback
+  on/off, hard-timeout ceiling) and `tests/test_reliability_api.py` (3 cases
+  through the HTTP layer asserting `gateway.fallback.chain`, a 502 with
+  `error.attempts`, and the untouched happy path).
+- `uv run pytest -m live` → **4 passed**, incl.
+  `test_openai_outage_falls_back_to_gemini_live`: OpenAI pointed at an
+  unroutable host, request still succeeded via real `gemini-3.6-flash`, and
+  `gateway.fallback.chain == ["openai" (error), "gemini" (success)]`.

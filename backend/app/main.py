@@ -15,6 +15,7 @@ from app.errors import register_exception_handlers
 from app.logging_config import configure_logging, get_logger
 from app.middleware import RequestContextMiddleware
 from app.providers.registry import ProviderRegistry
+from app.routing import Router
 
 log = get_logger("gateway.app")
 
@@ -27,6 +28,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.settings = settings
         app.state.registry = ProviderRegistry(settings)
+        app.state.router = Router(app.state.registry, settings)
         log.info(
             "gateway.startup",
             version=__version__,
