@@ -13,13 +13,14 @@ observability dashboard. Continuity across sessions depends on three files:
 
 ## Where the build is (update this line when a phase completes)
 
-**Phases 1–8 COMPLETE and committed** (basic gateway → multi-provider → reliability
+**Phases 1–9 COMPLETE and committed** (basic gateway → multi-provider → reliability
 → persistence/cost → SSE streaming → Redis rate-limiting + caching → production
-hardening → dashboard backend APIs: all §27 endpoints + SQL aggregations + admin
-JWT/cookie auth + project/API-key CRUD). All live-verified against the Azure +
-Gemini keys in `backend/.env`.
-**Next: Phase 9 — seed / demo data** (a script generating ~100k realistic
-historical `requests` rows so the dashboard + its perf target are testable).
+hardening → dashboard backend APIs → seed script). The whole **backend** is done
+and live-verified against the Azure + Gemini keys in `backend/.env`;
+`backend/scripts/seed.py` fills the DB with ~100k realistic historical rows
+(`uv run python -m scripts.seed --truncate`).
+**Next: Phase 10 — the React/TS dashboard** (Vite + Tailwind + shadcn/ui + TanStack
+Query + Recharts; `frontend/`; every §6–§24 page against the real §27 endpoints).
 
 ## How to work
 

@@ -371,6 +371,8 @@ async def recent_semantic_entries(session: AsyncSession, limit: int = 20) -> lis
 
 
 async def projects_with_rollup(session: AsyncSession) -> list[dict[str, Any]]:
+    # One aggregate scan of `requests` grouped by project_id, joined to projects —
+    # cheaper than a per-project LATERAL when there are many rows.
     rows = (
         await session.execute(
             text("""
@@ -380,10 +382,14 @@ async def projects_with_rollup(session: AsyncSession) -> list[dict[str, Any]]:
                    coalesce(r.cost, 0)     AS cost,
                    r.last_request_at
             FROM projects p
-            LEFT JOIN LATERAL (
-              SELECT count(*) AS requests, sum(cost_usd) AS cost, max(created_at) AS last_request_at
-              FROM requests WHERE project_id = p.id
-            ) r ON true
+            LEFT JOIN (
+              SELECT project_id,
+                     count(*)        AS requests,
+                     sum(cost_usd)   AS cost,
+                     max(created_at) AS last_request_at
+              FROM requests WHERE project_id IS NOT NULL
+              GROUP BY project_id
+            ) r ON r.project_id = p.id
             ORDER BY p.created_at DESC
             """)
         )

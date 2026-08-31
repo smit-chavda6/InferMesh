@@ -46,6 +46,24 @@ uv run ruff check . && uv run mypy && uv run pytest
   embedding key/deployment; without one it **degrades silently to exact-match
   only**.
 
+## Seed data
+
+`scripts/seed.py` generates realistic historical `requests` rows (weighted
+providers/models, ~4.5% errors, ~3% fallback, ~20% cache hits, diurnal traffic,
+real costs from `pricing.yaml`) so the dashboard is testable before the frontend
+exists.
+
+```bash
+uv run python -m scripts.seed                              # ~100k rows / 30 days / 5 projects
+uv run python -m scripts.seed --rows 250000 --days 45 --truncate --seed 1
+# or, in Docker:
+docker compose --profile seed run --rm seed --rows 100000 --truncate
+```
+
+100k rows takes ~40s. Against that dataset the overview KPI endpoints
+(`/v1/usage/summary`, `/v1/usage/timeseries`, `/v1/requests`) return in
+**under ~80ms server-side**.
+
 ## Cost tracking
 
 `pricing.yaml` is a **versioned, point-in-time** price list (USD per 1K tokens),

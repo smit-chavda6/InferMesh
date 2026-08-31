@@ -11,8 +11,8 @@ its output read, not assumed.
 
 1. Read `CLAUDE.md` (repo root) → then `docs/SPEC.md` §30 for phase defs/DoD.
 2. `git log --oneline` — one commit per completed phase.
-3. Current state: **Phases 1–8 COMPLETE & committed** (through commit
-   `Phase 8: dashboard backend APIs`). **Next: Phase 9 — seed / demo data (~100k rows).**
+3. Current state: **Phases 1–9 COMPLETE & committed** (through commit
+   `Phase 9: seed / demo data`). **Next: Phase 10 — the React/TS dashboard UI.**
 4. Bring infra up: `docker compose up -d postgres redis` (repo root).
 5. Gate command: `cd backend && uv run ruff check . && uv run mypy && uv run pytest`.
 
@@ -626,3 +626,56 @@ the running gateway DB (~55 accumulated requests).**
 4. **`/v1/requests/{id}` moved behind admin auth** (was open in Phase 4 for the
    "queryable by id" DoD). The Phase 4 test was updated to assert both the 401
    and the authorised 200.
+
+---
+
+## Phase 9 — Seed / demo data
+
+**Status: COMPLETE — 100k rows in ~41s; every KPI/chart endpoint returns
+non-trivial numbers; overview endpoints < ~80ms server-side against 100k rows.**
+
+### Done
+- **`backend/scripts/seed.py`** (`uv run python -m scripts.seed`, also
+  `[project.scripts] seed`, also `docker compose --profile seed run --rm seed`).
+  Args: `--rows` (100k default), `--days` (30), `--projects` (5), `--truncate`,
+  `--seed` (RNG seed). `seed()` is importable and takes `settings=` + `quiet=`
+  for tests; returns the row count.
+- **Distributions**: providers weighted openai 55 / anthropic 25 / gemini 20;
+  a few weighted models each; ~4.5% errors (mix of provider_error / timeout /
+  rate_limited / all_providers_failed with matching http_status + latency
+  shapes); ~3% fallback with a synthetic `provider_chain`; cache ~20% HIT
+  (cost 0 + `cache_saved_usd`) / ~75% MISS / ~5% DISABLED; ~15% streamed;
+  lognormal tokens; per-provider lognormal latency (openai < anthropic < gemini);
+  diurnal (hour-of-day weighted) timestamps over the window; ~10% anonymous, the
+  rest spread over the created projects. Costs are **real** (`PricingTable`).
+- **Docker**: `Dockerfile` now also `COPY`s `scripts/`; a `seed` compose service
+  under `profiles: ["seed"]`.
+- **Perf fix found while verifying**: `projects_with_rollup` did a per-project
+  `LATERAL` subquery (181 ms over 100k / 6 projects) — rewritten as one
+  `GROUP BY project_id` aggregate joined to `projects` (**22 ms**). Drives
+  `/v1/projects` and `/v1/rate-limits`.
+
+### Verified (commands run, output read)
+- `uv run ruff check .` / `ruff format --check .` → clean
+- `uv run mypy` (strict, `app/`) → **no issues, 42 source files**
+- `uv run pytest` → **128 passed, 8 skipped** (new `tests/test_seed.py` — 2:
+  distribution sanity + KPI endpoints return non-trivial numbers).
+- **`uv run python -m scripts.seed --rows 100000 --days 30 --projects 6
+  --truncate --seed 42`** → 100,000 rows in **41.3 s** (2.4k rows/s). `psql`
+  distribution check: 4,479 errors (4.5%), 2,872 fallback (2.9%), 19,240 cache
+  HIT (19%), 14,379 streamed, 6 projects, spread over exactly 30 days, total
+  cost $100.21; per-provider volume 55/25/20 and latency 487/660/879 ms as
+  configured; ~3,200 rows/day steady.
+- **KPI endpoints against the 100k set** (server-side `duration_ms` from the
+  access log, host uvicorn): `usage/summary?range=30d` **77 ms**
+  (`?range=24h` 14 ms), `usage/timeseries` 51/19 ms, `requests` list (+ filter +
+  sort) 46/14 ms, `providers` 23 ms, `providers/health` 6 ms, `cache/stats`
+  23 ms, `alerts` 22 ms, `system/health` 8 ms, `projects` 165→~25 ms after the
+  rollup rewrite, `rate-limits` ~25 ms. `usage/summary` returned
+  `total_requests 99,995`, `success_rate 0.955`, `cost $100.21`, `saved $26.15`,
+  `p50/p95 493/1335 ms`, `cache_hit_rate 0.202`, ~19M/14M in/out tokens.
+
+### Notes
+- Seed throughput (~2.4k rows/s) is dominated by per-row Python work
+  (`pricing.cost` regex+Decimal, `uuid4`, lognormal draws). asyncpg `COPY` would
+  be faster; ~41 s for a one-time 100k seed is acceptable, noted for Phase 12.

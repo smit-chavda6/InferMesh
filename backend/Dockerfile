@@ -34,6 +34,7 @@ WORKDIR /app
 COPY --from=builder --chown=app:app /app/.venv /app/.venv
 COPY --chown=app:app app ./app
 COPY --chown=app:app alembic ./alembic
+COPY --chown=app:app scripts ./scripts
 COPY --chown=app:app alembic.ini pricing.yaml pyproject.toml ./
 COPY --chown=app:app docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

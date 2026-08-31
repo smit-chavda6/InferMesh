@@ -56,6 +56,26 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # One-shot: generate ~100k realistic historical rows.
+  #   docker compose --profile seed run --rm seed
+  #   docker compose --profile seed run --rm seed --rows 250000 --truncate
+  seed:
+    profiles: ["seed"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - path: ./.env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+asyncpg://gateway:gateway@postgres:5432/gateway
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["python", "-m", "scripts.seed"]
+    command: []
+
 volumes:
   pgdata:
   redisdata:
