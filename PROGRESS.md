@@ -11,8 +11,8 @@ its output read, not assumed.
 
 1. Read `CLAUDE.md` (repo root) → then `docs/SPEC.md` §30 for phase defs/DoD.
 2. `git log --oneline` — one commit per completed phase.
-3. Current state: **Phases 1–7 COMPLETE & committed** (through commit
-   `Phase 7: production hardening`). **Next: Phase 8 — dashboard backend APIs.**
+3. Current state: **Phases 1–8 COMPLETE & committed** (through commit
+   `Phase 8: dashboard backend APIs`). **Next: Phase 9 — seed / demo data (~100k rows).**
 4. Bring infra up: `docker compose up -d postgres redis` (repo root).
 5. Gate command: `cd backend && uv run ruff check . && uv run mypy && uv run pytest`.
 
@@ -555,3 +555,74 @@ and every step verified locally.**
    and passes; the workflow file is committed and will run on first push.
 3. Root `.env` (gitignored) is a copy of `backend/.env` so `docker compose` has
    the provider keys for local runs; a fresh user does `cp .env.example .env`.
+
+---
+
+## Phase 8 — Dashboard backend APIs
+
+**Status: COMPLETE — every §27 endpoint returns real aggregated data and is
+behind admin auth; unauthenticated requests are rejected. Verified live against
+the running gateway DB (~55 accumulated requests).**
+
+### Done
+- **Deps**: `pyjwt` 2.13, `bcrypt` 5.0.
+- **`app/auth.py`** — single-admin auth, *separate from* client API keys:
+  bcrypt-hashed password (rounds configurable; tests use 4), HS256 JWT access
+  (15 min) + refresh (7 d) as HttpOnly cookies. Logout / refresh-rotation add the
+  old refresh `jti` to a Redis denylist (TTL = remaining life). `require_admin`
+  dependency reads the `gw_access` cookie (or `Authorization: Bearer` for API
+  clients) → 401 otherwise.
+- **`POST /v1/auth/{login,refresh,logout}` + `GET /v1/auth/me`**
+  (`app/api/routes/auth.py`). Login is IP-rate-limited (10 / 5 min) via the
+  existing `RateLimiter`.
+- **`app/dashboard/`** — `timerange.py` (range → window + prev window + bucket
+  seconds; `date_bin` via `make_interval`), `queries.py` (all SQL-side
+  aggregation: `usage_summary` with `percentile_cont` p50/p95 + FILTER counts +
+  prev-period totals; `usage_timeseries` bucketed success/error/fallback;
+  `requests_page` with whitelisted sort + filters + server-side page cap 200;
+  `provider_rollup`; `provider_health` per §2.1 thresholds incl. 3-consecutive-
+  failure rule via a window function; cache/project/429 helpers), `alerts.py`
+  (explainable rules → upsert one `active` row per (type, provider), resolve when
+  clear).
+- **Read routers** (all `dependencies=[Depends(require_admin)]`):
+  `app/api/routes/dashboard.py` (`/v1/usage/summary`, `/usage/timeseries`,
+  `/providers`, `/providers/health`, `/cache/stats`, `/rate-limits`, `/projects`
+  [list], `/alerts`, `/system/health`) and `app/api/routes/requests.py`
+  (`/v1/requests` list + `/v1/requests/{id}` detail — the Phase 4 detail endpoint
+  is now admin-guarded).
+- **`app/api/routes/projects.py`** — `POST /v1/projects` (create, returns the
+  full key **once**), `POST /v1/projects/{id}/rotate`, `.../revoke`.
+- **Migration `2a9aba21a031`** — `alerts` table.
+- `Settings`: `jwt_access_ttl_seconds`, `jwt_refresh_ttl_seconds`,
+  `auth_cookie_secure`, `auth_cookie_samesite`, `bcrypt_rounds`.
+
+### Verified (commands run, output read)
+- `uv run ruff check .` / `ruff format --check .` → clean
+- `uv run mypy` (strict, `app/`) → **no issues, 42 source files**
+- `uv run pytest` → **126 passed, 8 skipped** (38 new: `test_auth.py` [3],
+  `test_dashboard_api.py` [24 incl. a parametrized 401 check over all 10 read
+  endpoints], `test_projects_api.py` [4], + the Phase-4 detail test updated for
+  auth).
+- Migrations: `upgrade head` → `alembic check` **clean** → `downgrade base` →
+  `upgrade head` on a fresh DB.
+- **Live smoke** (host uvicorn + real `.env`): all 10 read endpoints + `/v1/auth/me`
+  → 200 with a valid cookie, → 401 without; `usage/summary` reported
+  `total_requests: 55`, `success/error 43/12`, real latency & cost;
+  `cache/stats` `hit_rate 0.36`, `cost_saved_usd 0.000785`; `POST /v1/projects`
+  → 201 with a one-time `sk-gw-…` key; `revoke` → `status: revoked`.
+
+### Decisions / deviations
+1. **Admin auth via cookie, not `Authorization` header** — the gateway chat
+   endpoint already reads `Authorization: Bearer` as a *client API key*, so the
+   admin session uses an HttpOnly `gw_access` cookie (spec §2.1's stated design).
+   A Bearer fallback exists for non-browser API clients but must carry the JWT,
+   not a client key.
+2. **Logout/refresh revocation needs Redis.** If Redis is unreachable the
+   revocation check fails *open* (logs a warning) — availability over the narrow
+   "a logged-out refresh token can't be used for up to its TTL" guarantee. Access
+   tokens are 15 min so the exposure is small.
+3. **Alerts are evaluated on read** (`GET /v1/alerts` recomputes + upserts) rather
+   than by a background task — simplest for this build; a scheduler is future work.
+4. **`/v1/requests/{id}` moved behind admin auth** (was open in Phase 4 for the
+   "queryable by id" DoD). The Phase 4 test was updated to assert both the 401
+   and the authorised 200.

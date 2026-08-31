@@ -8,9 +8,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app import __version__
+from app.api.routes.auth import router as auth_router
 from app.api.routes.chat import router as chat_router
+from app.api.routes.dashboard import router as dashboard_router
 from app.api.routes.health import router as health_router
+from app.api.routes.projects import router as projects_router
 from app.api.routes.requests import router as requests_router
+from app.auth import AdminAuth
 from app.cache import ChatCache, Embedder
 from app.config import Settings, get_settings
 from app.db.session import Database
@@ -53,6 +57,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             settings,
             app.state.pricing,
         )
+        app.state.admin_auth = AdminAuth(settings, app.state.redis)
         db_ok = await app.state.db.ping()
         redis_ok = await app.state.redis.ping()
         for warning in settings.startup_warnings():
@@ -90,6 +95,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_exception_handlers(app)
     app.include_router(health_router)
     app.include_router(chat_router)
+    app.include_router(auth_router)
+    app.include_router(dashboard_router)
+    app.include_router(projects_router)
     app.include_router(requests_router)
 
     return app

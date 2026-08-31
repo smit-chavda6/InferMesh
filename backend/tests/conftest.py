@@ -46,6 +46,9 @@ TEST_DATABASE_URL = os.getenv(
 )
 TEST_REDIS_URL = os.getenv("TEST_REDIS_URL", "redis://localhost:6379/15")
 
+ADMIN_EMAIL = "admin@example.test"
+ADMIN_PASSWORD = "admin-test-password"
+
 
 def make_settings(**overrides: object) -> Settings:
     base: dict[str, object] = {
@@ -64,9 +67,26 @@ def make_settings(**overrides: object) -> Settings:
         # Phase 6 features are opt-in per test (they add Redis state to manage).
         "rate_limit_enabled": False,
         "cache_enabled": False,
+        # Phase 8 admin auth
+        "jwt_secret": "test-jwt-secret-that-is-at-least-32-chars-long",
+        "admin_email": ADMIN_EMAIL,
+        "admin_password": ADMIN_PASSWORD,
+        "auth_cookie_secure": False,
+        "bcrypt_rounds": 4,  # keep the test suite fast
     }
     base.update(overrides)
     return Settings(_env_file=None, **base)  # type: ignore[arg-type]
+
+
+def admin_cookies(app: object) -> dict[str, str]:
+    """Admin session cookie (mints an access token directly).
+
+    A cookie, not an ``Authorization`` header, because the gateway chat endpoint
+    reads ``Authorization: Bearer`` as a *client API key* — the two auth systems
+    share that header and must not collide.
+    """
+    token = app.state.admin_auth.issue(subject=ADMIN_EMAIL).access  # type: ignore[attr-defined]
+    return {"gw_access": token}
 
 
 # --- Database fixtures -----------------------------------------------------
@@ -428,6 +448,18 @@ async def client(app_with_mocks) -> AsyncIterator[AsyncClient]:
         yield http_client
 
 
+@pytest.fixture
+async def admin_client(app_with_mocks) -> AsyncIterator[AsyncClient]:
+    """Like ``client`` but carries a valid admin session cookie."""
+    transport = ASGITransport(app=app_with_mocks)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://gateway.test",
+        cookies=admin_cookies(app_with_mocks),
+    ) as http_client:
+        yield http_client
+
+
 @asynccontextmanager
 async def make_app(**settings_overrides: object):
     """Build a fully-wired app (all three providers mocked) with custom settings.
@@ -446,3 +478,43 @@ async def make_app(**settings_overrides: object):
 
 def http_for(app) -> AsyncClient:
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://gateway.test")
+
+
+async def seed_requests(session, n: int = 60) -> None:
+    """Insert synthetic ``requests`` rows so aggregation endpoints return real numbers."""
+    import datetime as _dt
+    from decimal import Decimal
+
+    from app.db.models import RequestLog
+
+    now = _dt.datetime.now(_dt.UTC)
+    providers = ("openai", "anthropic", "gemini")
+    for i in range(n):
+        p = providers[i % 3]
+        ok = i % 7 != 0
+        session.add(
+            RequestLog(
+                request_id=f"req_seed_{i:04d}",
+                created_at=now - _dt.timedelta(minutes=i * 3),
+                provider=p,
+                model=f"{p}-model",
+                upstream_model=f"{p}-model-2026",
+                status="success" if ok else "error",
+                http_status=200 if ok else 502,
+                error_type=None if ok else "provider_error",
+                latency_ms=100.0 + (i % 20) * 15,
+                prompt_tokens=10 + i,
+                completion_tokens=5 + i,
+                total_tokens=15 + 2 * i,
+                cost_usd=Decimal("0.001000") if ok else None,
+                input_cost_usd=Decimal("0.000400") if ok else None,
+                output_cost_usd=Decimal("0.000600") if ok else None,
+                pricing_version="test" if ok else None,
+                cache_status="HIT" if i % 5 == 0 else "MISS",
+                cache_saved_usd=Decimal("0.001000") if i % 5 == 0 else None,
+                fallback_used=(i % 9 == 0),
+                retries=1 if i % 9 == 0 else 0,
+                message_count=1 + (i % 3),
+            )
+        )
+    await session.commit()

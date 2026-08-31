@@ -46,10 +46,15 @@ class Settings(BaseSettings):
     # --- Redis ---------------------------------------------------------
     redis_url: str = "redis://localhost:6379/0"
 
-    # --- Dashboard admin auth (used from Phase 8; validated here at startup) ---
+    # --- Dashboard admin auth ------------------------------------------
     jwt_secret: str = "dev-only-change-me"
     admin_email: str = "admin@example.com"
     admin_password: str = "admin"
+    jwt_access_ttl_seconds: int = Field(default=900, ge=60)  # 15 min
+    jwt_refresh_ttl_seconds: int = Field(default=604_800, ge=300)  # 7 days
+    auth_cookie_secure: bool = True  # set false for local plain-HTTP dev
+    auth_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
+    bcrypt_rounds: int = Field(default=12, ge=4, le=16)  # tests drop this to 4
 
     # --- Request limits ---------------------------------------------------
     max_messages_per_request: int = Field(default=256, ge=1)

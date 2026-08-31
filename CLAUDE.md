@@ -13,13 +13,13 @@ observability dashboard. Continuity across sessions depends on three files:
 
 ## Where the build is (update this line when a phase completes)
 
-**Phases 1–7 COMPLETE and committed** (basic gateway → multi-provider → reliability
+**Phases 1–8 COMPLETE and committed** (basic gateway → multi-provider → reliability
 → persistence/cost → SSE streaming → Redis rate-limiting + caching → production
-hardening: Dockerfile + compose stack + CI + config validation + `/health/ready`).
-All live-verified against the Azure + Gemini keys in `backend/.env`; the full
-`docker compose up --build` stack was run and served a real request.
-**Next: Phase 8 — dashboard backend APIs** (all §27 endpoints + SQL aggregations
-+ admin JWT auth).
+hardening → dashboard backend APIs: all §27 endpoints + SQL aggregations + admin
+JWT/cookie auth + project/API-key CRUD). All live-verified against the Azure +
+Gemini keys in `backend/.env`.
+**Next: Phase 9 — seed / demo data** (a script generating ~100k realistic
+historical `requests` rows so the dashboard + its perf target are testable).
 
 ## How to work
 

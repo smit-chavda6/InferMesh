@@ -145,3 +145,32 @@ class SemanticCacheEntry(Base):
     )
     expires_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_hit_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Alert(Base):
+    """A dashboard alert (provider degraded/unavailable, high error rate, Redis/PG
+    down, rate-limit spike, cost anomaly). Evaluated from recent request data.
+
+    While an alert condition holds, exactly one ``active`` row exists per
+    (alert_type, provider) — re-evaluation updates it in place. When the condition
+    clears, the row is marked ``resolved``.
+    """
+
+    __tablename__ = "alerts"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    alert_type: Mapped[str] = mapped_column(String(48), index=True)
+    severity: Mapped[str] = mapped_column(String(16), index=True)  # info|warning|critical
+    status: Mapped[str] = mapped_column(String(16), default="active", index=True)  # active|resolved
+    provider: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String(160))
+    message: Mapped[str] = mapped_column(Text)
+    meta: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    acknowledged: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    first_seen_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    last_seen_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    resolved_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

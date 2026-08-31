@@ -62,12 +62,17 @@ async def test_cost_is_calculated_from_pricing_table(
     assert row.pricing_version  # stamped with the table version it was costed against
 
 
-async def test_stored_request_is_queryable_by_id(client: AsyncClient) -> None:
+async def test_stored_request_is_queryable_by_id(
+    client: AsyncClient, admin_client: AsyncClient
+) -> None:
     request_id = (await client.post("/v1/chat/completions", json=_BODY)).json()["gateway"][
         "request_id"
     ]
 
-    got = await client.get(f"/v1/requests/{request_id}")
+    # detail endpoint now requires an admin session
+    assert (await client.get(f"/v1/requests/{request_id}")).status_code == 401
+
+    got = await admin_client.get(f"/v1/requests/{request_id}")
     assert got.status_code == 200
     body = got.json()
     assert body["request_id"] == request_id
@@ -75,7 +80,7 @@ async def test_stored_request_is_queryable_by_id(client: AsyncClient) -> None:
     assert body["total_tokens"] == 18
     assert body["cost_usd"] is not None
 
-    missing = await client.get("/v1/requests/req_does_not_exist")
+    missing = await admin_client.get("/v1/requests/req_does_not_exist")
     assert missing.status_code == 404
     assert missing.json()["error"]["type"] == "request_not_found"
 

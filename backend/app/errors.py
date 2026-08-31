@@ -84,6 +84,18 @@ class InvalidAPIKeyError(GatewayError):
     status_code = 401
 
 
+class AdminAuthError(GatewayError):
+    """Dashboard admin session missing / invalid / expired."""
+
+    error_type = "admin_auth_required"
+    status_code = 401
+
+
+class NotFoundError(GatewayError):
+    error_type = "not_found"
+    status_code = 404
+
+
 class RateLimitExceededError(GatewayError):
     error_type = "rate_limited"
     status_code = 429
