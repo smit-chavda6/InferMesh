@@ -25,7 +25,7 @@ async def _app_client(app):  # helper
     return AsyncClient(transport=transport, base_url="http://gateway.test")
 
 
-async def test_fallback_chain_is_rendered_in_gateway_metadata() -> None:
+async def test_fallback_chain_is_rendered_in_gateway_metadata(db_engine) -> None:
     settings = make_settings(retry_base_delay_seconds=0.0, retry_jitter=False)
     app = create_app(settings)
     async with LifespanManager(app):
@@ -56,7 +56,7 @@ async def test_fallback_chain_is_rendered_in_gateway_metadata() -> None:
     assert chain[1]["outcome"] == "success"
 
 
-async def test_all_providers_down_returns_502_with_attempts() -> None:
+async def test_all_providers_down_returns_502_with_attempts(db_engine) -> None:
     settings = make_settings(retry_base_delay_seconds=0.0, retry_jitter=False)
     app = create_app(settings)
     async with LifespanManager(app):
@@ -73,7 +73,7 @@ async def test_all_providers_down_returns_502_with_attempts() -> None:
     assert [a["provider"] for a in err["attempts"]] == ["openai", "anthropic", "gemini"]
 
 
-async def test_happy_path_still_single_attempt_no_fallback() -> None:
+async def test_happy_path_still_single_attempt_no_fallback(db_engine) -> None:
     settings = make_settings(retry_base_delay_seconds=0.0, retry_jitter=False)
     app = create_app(settings)
     async with LifespanManager(app):

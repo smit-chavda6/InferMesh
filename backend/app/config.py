@@ -34,6 +34,15 @@ class Settings(BaseSettings):
     # --- Routing defaults ---
     default_provider: ProviderName = "openai"
 
+    # --- Database ---------------------------------------------------------
+    database_url: str = "postgresql+asyncpg://gateway:gateway@localhost:5432/gateway"
+    db_echo: bool = False
+    db_pool_size: int = Field(default=5, ge=1)
+    db_max_overflow: int = Field(default=10, ge=0)
+    # One usage row is written per request when enabled. Disabling it keeps the
+    # gateway working with no database (row-writing is best-effort regardless).
+    usage_logging_enabled: bool = True
+
     # --- OpenAI / Azure OpenAI --------------------------------------------------
     # A single adapter serves native OpenAI and Azure OpenAI; ``openai_mode``
     # selects which client is constructed. This keeps Azure out of a separate

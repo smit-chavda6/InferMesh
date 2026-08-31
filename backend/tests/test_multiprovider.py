@@ -73,7 +73,7 @@ async def test_default_provider_used_when_field_omitted(client: AsyncClient) -> 
     assert body["gateway"]["provider"] == "openai"  # make_settings default
 
 
-async def test_unconfigured_provider_is_rejected() -> None:
+async def test_unconfigured_provider_is_rejected(db_engine) -> None:
     """A provider with no credentials returns 503, not a 500."""
     settings = make_settings(anthropic_api_key=None)
     app = create_app(settings)

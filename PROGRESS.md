@@ -244,3 +244,84 @@ live (real OpenAI outage → Gemini fallback).**
   `test_openai_outage_falls_back_to_gemini_live`: OpenAI pointed at an
   unroutable host, request still succeeded via real `gemini-3.6-flash`, and
   `gateway.fallback.chain == ["openai" (error), "gemini" (success)]`.
+
+---
+
+## Phase 4 — Persistence & observability
+
+**Status: COMPLETE — all DoD items verified (offline + live), migrations tested
+up/down/up and `alembic check`-clean.**
+
+### Infra
+- `docker compose up -d postgres` → Postgres 16. `docker-compose.yml` mounts
+  `infra/postgres/init-test-db.sh` which creates `gateway_test` on first volume
+  init. (Docker Desktop had to be started; first `up` got orphaned by a Docker
+  restart — a re-`up` fixed it.)
+- Deps added: `sqlalchemy[asyncio]` 2.0.52, `asyncpg` 0.31, `alembic` 1.19.
+
+### Plan (pre-phase)
+- `app/db/`: declarative `Base` with a constraint-naming convention (makes
+  Alembic downgrade reliable), async engine + sessionmaker in a `Database` object
+  owned by the lifespan, `get_session` dependency.
+- One table, `requests` = observability source of truth (request + usage + cost +
+  fallback chain + cache status), indexed on created_at/provider/model/status/
+  fallback_used/cache_status/cost_usd/error_type/api_key_prefix.
+- `pricing.yaml` (versioned) + `PricingTable` loader with model-match precedence
+  (exact → date-suffix-stripped → longest prefix → provider default → none).
+- `UsageRecorder`: exactly one row per request on both success and error paths;
+  best-effort (a DB failure is logged, never turned into a 500).
+- `GET /v1/requests/{request_id}` (no auth yet — Phase 8) for "queryable by id".
+- Alembic async env reading URL from `Settings`; autogenerate + up/down/up cycle.
+
+### Done (post-phase)
+- `app/db/{base,session,models}.py`, `app/pricing.py`, `app/observability.py`,
+  `app/schemas/observability.py`, `app/api/routes/requests.py`.
+- `backend/pricing.yaml` — version `2026-08-31`; covers the live models
+  (`gpt-5.4`, `gemini-3.6-flash`, `claude-3-5-sonnet-*`) plus common ones; some
+  entries flagged `estimated: true` where no public list price was on hand.
+- `alembic/` (async template, env rewired to `Settings` + `Base.metadata`,
+  `compare_type`/`compare_server_default` on) + `versions/83a048a6c618_*.py`.
+- Chat route restructured: `try/except GatewayError/finally`, builds a
+  `RequestOutcome` on every path, records it in `finally`.
+- Lifespan now owns `Database`, `PricingTable`, `UsageRecorder`; disposes the
+  engine on shutdown; logs `database_reachable` + `pricing_version` at startup.
+- `Settings`: `database_url`, `db_echo`, `db_pool_size`, `db_max_overflow`,
+  `usage_logging_enabled`.
+
+### Verified (commands run, output read)
+- `uv run ruff check .` / `ruff format --check .` → clean
+- `uv run mypy` (strict, `app/`) → **no issues, 29 source files**
+- `uv run pytest` → **61 passed, 4 skipped** (DB tests ran against Postgres).
+  New: `tests/test_pricing.py` (10) and `tests/test_persistence.py` (5:
+  exactly-one-row on success, cost from pricing table, queryable-by-id + 404,
+  exactly-one-row on all-providers-fail with the error fields + chain, and
+  recorder failure does **not** break the 200).
+- Migrations: `alembic upgrade head` from a **dropped/empty** DB → OK;
+  `alembic check` → **"No new upgrade operations detected"** (models ⇄ migration
+  in sync); `downgrade base → upgrade head` cycle → OK.
+- **Live**: `pytest -m live` (4 passed) wrote real rows to the `gateway` DB —
+  verified by `psql`: e.g. Azure `gpt-5.4` (upstream `gpt-5.4-2026-03-05`),
+  tokens 13/5/18, `cost_usd 0.000066` = input `0.000016` + output `0.000050`,
+  `pricing_version 2026-08-31`, real `latency_ms ~2587`. Gemini rows show
+  thinking tokens folded into `completion_tokens` and costed.
+
+### Deviations / decisions
+1. **No `projects` table yet.** `api_key_prefix` is a nullable string until
+   Phase 6 adds API keys + rate limits; that migration will add the FK atomically
+   then. Avoids building auth ahead of its phase while keeping the `requests`
+   shape stable.
+2. **Single `requests` table** (not separate `requests` + `usage`) — the
+   dashboard's Requests Explorer (§13) maps 1:1 onto it and every aggregation is
+   a single-table `GROUP BY`.
+3. **DB-backed tests require Postgres**, and `pytest` now needs it for the full
+   suite. They **skip with a message** if `TEST_DATABASE_URL` is unreachable, so
+   the suite still runs (partially) without Docker; CI (Phase 7) provides it.
+4. `pricing.yaml` estimates for `gpt-5.x` / `gemini-3.x` are marked
+   `estimated: true` and surfaced via `CostBreakdown.estimated` — README will
+   carry the point-in-time caveat (§34).
+
+### Noted for later
+- Test suite is ~37s now (per-test `create_all`/`drop_all` + `genai.Client`
+  construction). Phase 12 perf pass: consider a session-scoped schema + per-test
+  truncate, and a shared mocked Gemini client.
+- `/v1/requests/{id}` currently unauthenticated — Phase 8 puts it behind admin JWT.

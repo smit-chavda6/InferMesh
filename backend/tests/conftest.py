@@ -20,14 +20,28 @@ from asgi_lifespan import LifespanManager
 from google import genai
 from google.genai import types as genai_types
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+from sqlalchemy.pool import NullPool
 
 os.environ.setdefault("LOG_JSON", "false")
 
 from app.config import Settings
+from app.db import models as _models  # noqa: F401  — registers tables on Base.metadata
+from app.db.base import Base
 from app.main import create_app
 from app.providers.anthropic_adapter import AnthropicAdapter
 from app.providers.gemini_adapter import GeminiAdapter
 from app.providers.openai_adapter import OpenAIAdapter
+
+TEST_DATABASE_URL = os.getenv(
+    "TEST_DATABASE_URL",
+    "postgresql+asyncpg://gateway:gateway@localhost:5432/gateway_test",
+)
 
 
 def make_settings(**overrides: object) -> Settings:
@@ -39,9 +53,39 @@ def make_settings(**overrides: object) -> Settings:
         "anthropic_api_key": "test-anthropic-key",
         "gemini_api_key": "test-gemini-key",
         "default_provider": "openai",
+        "database_url": TEST_DATABASE_URL,
     }
     base.update(overrides)
     return Settings(_env_file=None, **base)  # type: ignore[arg-type]
+
+
+# --- Database fixtures -----------------------------------------------------
+
+
+@pytest.fixture
+async def db_engine() -> AsyncIterator[AsyncEngine]:
+    """Fresh ``requests`` schema in the test database; skips if it is unreachable."""
+    engine = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception as exc:  # noqa: BLE001 - DB not running locally -> skip, don't hard-fail
+        await engine.dispose()
+        pytest.skip(f"test database not reachable at {TEST_DATABASE_URL}: {exc}")
+    try:
+        yield engine
+    finally:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+        await engine.dispose()
+
+
+@pytest.fixture
+async def db_session(db_engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
+    maker = async_sessionmaker(db_engine, expire_on_commit=False)
+    async with maker() as session:
+        yield session
 
 
 # --- OpenAI mock ------------------------------------------------------------
@@ -185,17 +229,24 @@ def mock_gemini_adapter() -> GeminiAdapter:
 
 
 @pytest.fixture
-async def client(
+async def app_with_mocks(
+    db_engine: AsyncEngine,
     mock_openai_client: openai.AsyncOpenAI,
     mock_anthropic_client: anthropic.AsyncAnthropic,
-) -> AsyncIterator[AsyncClient]:
+):
+    """A fully-wired app with all three providers mocked and the test DB attached."""
     settings = make_settings()
-    app = create_app(settings)
-    async with LifespanManager(app):
-        registry = app.state.registry
+    application = create_app(settings)
+    async with LifespanManager(application):
+        registry = application.state.registry
         registry._adapters["openai"] = OpenAIAdapter(settings, client=mock_openai_client)
         registry._adapters["anthropic"] = AnthropicAdapter(settings, client=mock_anthropic_client)
         registry._adapters["gemini"] = make_gemini_adapter()
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://gateway.test") as http_client:
-            yield http_client
+        yield application
+
+
+@pytest.fixture
+async def client(app_with_mocks) -> AsyncIterator[AsyncClient]:
+    transport = ASGITransport(app=app_with_mocks)
+    async with AsyncClient(transport=transport, base_url="http://gateway.test") as http_client:
+        yield http_client

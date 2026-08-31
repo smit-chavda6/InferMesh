@@ -1,0 +1,103 @@
+# =============================================================================
+# LLM pricing table  —  POINT-IN-TIME SNAPSHOT (see README §"Cost tracking").
+#
+# Prices are USD per 1,000 tokens. Provider list prices drift over time and this
+# file is NOT auto-updated from any provider API — it is a static, versioned
+# approximation loaded once at startup. Bump `version` whenever you edit numbers;
+# every request row records the version it was costed against.
+#
+# Some entries (gpt-5.x, gemini-3.x) are best-effort estimates where no public
+# list price was on hand at authoring time — flagged with `estimated: true`.
+# =============================================================================
+version: "2026-08-31"
+currency: USD
+
+providers:
+  openai:
+    default:
+      input_per_1k: 0.0005
+      output_per_1k: 0.0015
+    models:
+      gpt-4o-mini:
+        input_per_1k: 0.00015
+        output_per_1k: 0.0006
+      gpt-4o:
+        input_per_1k: 0.0025
+        output_per_1k: 0.01
+      gpt-4.1:
+        input_per_1k: 0.002
+        output_per_1k: 0.008
+      gpt-4.1-mini:
+        input_per_1k: 0.0004
+        output_per_1k: 0.0016
+      gpt-4.1-nano:
+        input_per_1k: 0.0001
+        output_per_1k: 0.0004
+      gpt-5:
+        input_per_1k: 0.00125
+        output_per_1k: 0.01
+        estimated: true
+      gpt-5-mini:
+        input_per_1k: 0.00025
+        output_per_1k: 0.002
+        estimated: true
+      gpt-5.4:
+        input_per_1k: 0.00125
+        output_per_1k: 0.01
+        estimated: true
+      gpt-5.4-mini:
+        input_per_1k: 0.00025
+        output_per_1k: 0.002
+        estimated: true
+      o3-mini:
+        input_per_1k: 0.0011
+        output_per_1k: 0.0044
+
+  anthropic:
+    default:
+      input_per_1k: 0.003
+      output_per_1k: 0.015
+    models:
+      claude-3-5-sonnet-latest:
+        input_per_1k: 0.003
+        output_per_1k: 0.015
+      claude-3-5-sonnet-20241022:
+        input_per_1k: 0.003
+        output_per_1k: 0.015
+      claude-3-5-haiku-latest:
+        input_per_1k: 0.0008
+        output_per_1k: 0.004
+      claude-3-opus-latest:
+        input_per_1k: 0.015
+        output_per_1k: 0.075
+      claude-sonnet-4:
+        input_per_1k: 0.003
+        output_per_1k: 0.015
+        estimated: true
+
+  gemini:
+    default:
+      input_per_1k: 0.0003
+      output_per_1k: 0.0025
+    models:
+      gemini-1.5-flash:
+        input_per_1k: 0.000075
+        output_per_1k: 0.0003
+      gemini-1.5-pro:
+        input_per_1k: 0.00125
+        output_per_1k: 0.005
+      gemini-2.0-flash:
+        input_per_1k: 0.0001
+        output_per_1k: 0.0004
+      gemini-3.6-flash:
+        input_per_1k: 0.0003
+        output_per_1k: 0.0025
+        estimated: true
+      gemini-flash-latest:
+        input_per_1k: 0.0003
+        output_per_1k: 0.0025
+        estimated: true
+      gemini-pro-latest:
+        input_per_1k: 0.00125
+        output_per_1k: 0.01
+        estimated: true
