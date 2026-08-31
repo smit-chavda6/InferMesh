@@ -48,12 +48,21 @@ def test_azure_mode_needs_endpoint() -> None:
 
 
 def test_startup_warnings_flag_missing_providers() -> None:
+    # Explicitly clear every provider credential — `_env_file=None` disables the
+    # .env file but NOT ambient os.environ, and CI sets OPENAI_API_KEY=ci-dummy etc.
     s = Settings(
         _env_file=None,
         environment="test",
         database_url="postgresql+asyncpg://x@localhost/db",
         redis_url="redis://localhost:6379/0",
+        openai_api_key=None,
+        anthropic_api_key=None,
+        gemini_api_key=None,
+        azure_openai_endpoint=None,
+        azure_foundry_api_key=None,
+        azure_foundry_endpoint=None,
     )
+    assert s.available_providers() == []
     warnings = s.startup_warnings()
     assert any("no LLM providers" in w for w in warnings)
 
