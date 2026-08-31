@@ -6,7 +6,8 @@ retries, fallback, caching and rate-limiting — plus a React/TypeScript
 observability dashboard that runs entirely off real gateway data.
 
 > **Build in progress.** This README is filled out fully in Phase 12 (§34).
-> Current state is tracked in [`PROGRESS.md`](./PROGRESS.md).
+> Current state: [`PROGRESS.md`](./PROGRESS.md). Full spec + phase definitions:
+> [`docs/SPEC.md`](./docs/SPEC.md). New sessions start from [`CLAUDE.md`](./CLAUDE.md).
 
 ## Repo layout
 

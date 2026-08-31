@@ -3,9 +3,18 @@
 Continuity log for the multi-phase build. One section per phase: the plan before
 starting, then what was actually done / skipped / deviated after finishing.
 
-Phase list and Definitions of Done live in the project spec (§30). Guardrails in
-§0.1 are hard gates — "verified" below means a command was run and its output read,
-not assumed.
+Phase list and Definitions of Done live in the project spec (`docs/SPEC.md` §30).
+Guardrails in §0.1 are hard gates — "verified" below means a command was run and
+its output read, not assumed.
+
+## RESUMING IN A NEW SESSION
+
+1. Read `CLAUDE.md` (repo root) → then `docs/SPEC.md` §30 for phase defs/DoD.
+2. `git log --oneline` — one commit per completed phase.
+3. Current state: **Phases 1–6 COMPLETE & committed** (through commit
+   `Phase 6: Redis rate limiting + response caching`). **Next: Phase 7.**
+4. Bring infra up: `docker compose up -d postgres redis` (repo root).
+5. Gate command: `cd backend && uv run ruff check . && uv run mypy && uv run pytest`.
 
 ---
 
