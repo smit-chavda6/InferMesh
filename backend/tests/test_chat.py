@@ -40,6 +40,11 @@ async def test_validation_error_envelope(client: AsyncClient) -> None:
     assert resp.json()["error"]["type"] == "validation_error"
 
 
-async def test_streaming_not_implemented_yet(client: AsyncClient) -> None:
-    resp = await client.post("/v1/chat/completions", json={**_BODY, "stream": True})
-    assert resp.status_code == 501
+async def test_streaming_request_returns_event_stream(client: AsyncClient) -> None:
+    async with client.stream(
+        "POST", "/v1/chat/completions", json={**_BODY, "stream": True}
+    ) as resp:
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/event-stream")
+        body = "".join([chunk async for chunk in resp.aiter_text()])
+    assert body.rstrip().endswith("data: [DONE]")

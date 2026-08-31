@@ -325,3 +325,72 @@ up/down/up and `alembic check`-clean.**
   construction). Phase 12 perf pass: consider a session-scoped schema + per-test
   truncate, and a shared mocked Gemini client.
 - `/v1/requests/{id}` currently unauthenticated — Phase 8 puts it behind admin JWT.
+
+---
+
+## Phase 5 — Streaming
+
+**Status: COMPLETE — DoD verified offline (mocked SSE for all 3 providers) and
+live (real SSE from Azure `gpt-5.4` + `gemini-3.6-flash`, each logging one
+accurate `streamed=true` row).**
+
+### Plan (pre-phase)
+- Implement `ProviderAdapter.stream()` on all three adapters (was
+  `NotImplementedError`), yielding `StreamChunk`s; usage/finish arrive on the
+  final chunk(s).
+- `Router.execute_stream()` — retry + fallback apply **only before the first
+  token**; after that a failure ends the stream with a terminal `StreamOutcome`
+  carrying `error`. Yields `StreamChunk`s then exactly one `StreamOutcome`.
+- Chat route: `stream=true` → `StreamingResponse` of OpenAI-compatible
+  `chat.completion.chunk` SSE frames; final frame carries `finish_reason`,
+  `usage` and the `gateway` object; then `data: [DONE]`. A pre-stream failure is
+  a JSON 502 (no SSE body started); a mid-stream failure ends with an error in
+  the `gateway` object + `[DONE]`.
+- Usage row recorded in the generator's `finally` (survives client disconnect),
+  `streamed=true`.
+
+### Done (post-phase)
+- `StreamChunk` gained `response_id` / `created` / `model` (populated on
+  whichever provider chunks include them).
+- `openai_adapter.stream`: `stream=True` + `stream_options={"include_usage":true}`;
+  maps delta/finish/usage chunks.
+- `anthropic_adapter.stream`: raw event stream — `message_start` (input tokens),
+  `content_block_delta` (text), `message_delta` (stop_reason + output tokens).
+- `gemini_adapter.stream`: `generate_content_stream` (`await` → async iterator);
+  per-part `.text` delta, final part `.usage_metadata` + finish reason. Blocked
+  parts that raise on `.text` are tolerated.
+- `routing.py`: `StreamOutcome` dataclass + `Router.execute_stream`.
+- `api/routes/chat.py` restructured: non-stream path returns
+  `JSONResponse(jsonable_encoder(..., exclude_none=True))`; `_stream_response`
+  pulls the first item eagerly so a pre-stream failure is a clean JSON error,
+  then returns the `StreamingResponse`. Shared `_apply_error` / `_finalize_outcome`.
+- Pure-ASGI request-context middleware (Phase 1 choice) passes SSE through
+  untouched — no rework needed.
+
+### Verified (commands run, output read)
+- `uv run ruff check .` / `ruff format --check .` → clean
+- `uv run mypy` (strict, `app/`) → **no issues, 29 source files**
+- `uv run pytest` (offline) → **68 passed, 6 skipped**. New:
+  `tests/test_streaming.py` (8: router deltas+terminal, fallback-before-first-
+  token, mid-stream-failure-no-fallback, SSE shape + `[DONE]` + final
+  usage/gateway, one accurate `streamed=true` row, pre-stream failure = JSON 502
+  + error row, mid-stream failure = error row). Adapter `stream()` unit tests
+  rewritten for all three (were `NotImplementedError` asserts).
+- **Live**: `pytest -m live` → **6 passed** incl. `test_live_stream_openai`
+  (Azure `gpt-5.4`) and `test_live_stream_gemini`. `psql` confirms
+  `streamed=true` rows: Gemini 7/190/197 tokens `cost_usd 0.000477` `finish=stop`;
+  OpenAI 12/7/19 `cost_usd 0.000085`.
+
+### Decisions
+1. **No streaming recovery after first byte.** Standard SSE constraint — you
+   can't un-send bytes. Retry/fallback happen only while buffering for the first
+   token; after that a failure yields a terminal `StreamOutcome.error`, the SSE
+   ends with the error surfaced in the `gateway` object, and the row is
+   `status="error"` with whatever partial usage was seen.
+2. **`gateway` object rides on the final SSE frame** (next to `usage`), not a
+   separate `event:` — keeps a single parse path and matches how OpenAI attaches
+   `usage` to a terminal chunk.
+3. Mock strategy for streaming: OpenAI + Anthropic get real SSE bytes through
+   `httpx2.MockTransport` (branch on `"stream": true` in the request body);
+   Gemini stays boundary-mocked (`generate_content_stream` patched to return an
+   async iterator of constructed partials).

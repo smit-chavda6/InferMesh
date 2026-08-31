@@ -148,8 +148,35 @@ class OpenAIAdapter(ProviderAdapter):
         )
 
     async def stream(self, request: ChatCompletionRequest) -> AsyncIterator[StreamChunk]:
-        raise NotImplementedError("streaming is implemented in Phase 5")
-        yield StreamChunk()  # pragma: no cover  — makes this an async generator
+        kwargs = self._build_kwargs(request)
+        kwargs["stream"] = True
+        kwargs["stream_options"] = {"include_usage": True}
+        try:
+            stream = await self._client.chat.completions.create(**kwargs)
+            async for chunk in stream:
+                choice = chunk.choices[0] if chunk.choices else None
+                delta = choice.delta.content if choice and choice.delta else None
+                usage = None
+                if chunk.usage is not None:
+                    usage = NormalizedUsage(
+                        prompt_tokens=chunk.usage.prompt_tokens,
+                        completion_tokens=chunk.usage.completion_tokens,
+                        total_tokens=chunk.usage.total_tokens,
+                    )
+                if delta or (choice and choice.finish_reason) or usage:
+                    yield StreamChunk(
+                        delta=delta or "",
+                        finish_reason=(choice.finish_reason if choice else None),
+                        usage=usage,
+                        response_id=chunk.id,
+                        created=chunk.created,
+                        model=chunk.model,
+                    )
+        except openai.OpenAIError as exc:
+            raise self._map_error(exc) from exc
+        except Exception as exc:  # provider boundary: always re-raise as a typed error
+            log.warning("openai.stream_error", error=str(exc), error_type=type(exc).__name__)
+            raise ProviderError("openai", f"{type(exc).__name__}: {exc}") from exc
 
     async def list_models(self) -> list[ProviderModel]:
         try:

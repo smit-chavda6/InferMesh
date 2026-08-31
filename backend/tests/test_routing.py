@@ -64,6 +64,43 @@ class ScriptedAdapter(ProviderAdapter):
         return HealthResult(healthy=True)
 
 
+class StreamingScriptedAdapter(ScriptedAdapter):
+    """Adapter whose ``stream`` yields configured deltas, optionally failing."""
+
+    def __init__(
+        self,
+        name: str,
+        deltas: list[str],
+        *,
+        fail_before_first: GatewayError | None = None,
+        fail_after_n: int | None = None,
+        usage: tuple[int, int, int] = (5, 7, 12),
+        finish_reason: str = "stop",
+    ) -> None:
+        super().__init__(name, [])
+        self._deltas = deltas
+        self._fail_before_first = fail_before_first
+        self._fail_after_n = fail_after_n
+        self._usage = usage
+        self._finish_reason = finish_reason
+        self.stream_calls = 0
+
+    async def stream(self, request: ChatCompletionRequest) -> AsyncIterator[StreamChunk]:
+        self.stream_calls += 1
+        if self._fail_before_first is not None:
+            raise self._fail_before_first
+        for idx, delta in enumerate(self._deltas):
+            if self._fail_after_n is not None and idx == self._fail_after_n:
+                raise ProviderError(self.name, "mid-stream boom")
+            yield StreamChunk(
+                delta=delta,
+                response_id=f"{self.name}-resp",
+                model=f"{self.name}-model",
+                created=1_700_000_000,
+            )
+        yield StreamChunk(finish_reason=self._finish_reason, usage=NormalizedUsage(*self._usage))
+
+
 def build_router(
     adapters: dict[str, ScriptedAdapter], **settings_overrides: object
 ) -> tuple[Router, AsyncMock]:

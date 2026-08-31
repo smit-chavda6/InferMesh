@@ -106,7 +106,12 @@ async def test_unexpected_error_is_wrapped_not_swallowed() -> None:
         await adapter.complete(_req())
 
 
-async def test_stream_not_implemented(mock_gemini_adapter: GeminiAdapter) -> None:
-    with pytest.raises(NotImplementedError):
-        async for _chunk in mock_gemini_adapter.stream(_req()):
-            pass
+async def test_stream_yields_deltas_and_usage(mock_gemini_adapter: GeminiAdapter) -> None:
+    chunks = [c async for c in mock_gemini_adapter.stream(_req())]
+    assert "".join(c.delta for c in chunks) == "Hello from the Gemini mock."
+    final = chunks[-1]
+    assert final.finish_reason == "stop"
+    assert final.usage is not None
+    assert final.usage.prompt_tokens == 6
+    # completion = total - prompt = 15 - 6
+    assert final.usage.completion_tokens == 9

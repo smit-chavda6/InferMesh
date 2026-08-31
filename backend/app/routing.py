@@ -15,7 +15,8 @@ from __future__ import annotations
 import asyncio
 import random
 import time
-from collections.abc import Awaitable, Callable
+import uuid
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 
 from app.config import Settings
@@ -28,7 +29,7 @@ from app.errors import (
     ProviderTimeoutError,
 )
 from app.logging_config import get_logger
-from app.providers.base import NormalizedCompletion
+from app.providers.base import NormalizedCompletion, NormalizedUsage, StreamChunk
 from app.providers.registry import ProviderRegistry
 from app.schemas.chat import ChatCompletionRequest
 from app.schemas.gateway import AttemptOutcome, ProviderAttempt
@@ -63,6 +64,29 @@ class ExecutionResult:
     @property
     def fallback_used(self) -> bool:
         # More than one provider appears in the attempt log.
+        return len({a.provider for a in self.attempts}) > 1
+
+
+@dataclass(slots=True)
+class StreamOutcome:
+    """Terminal marker yielded once at the end of ``Router.execute_stream``."""
+
+    completion_id: str
+    created: int
+    provider_used: str
+    model_used: str
+    upstream_model: str
+    usage: NormalizedUsage
+    finish_reason: str | None
+    attempts: list[ProviderAttempt] = field(default_factory=list)
+    error: GatewayError | None = None  # set only on a mid-stream failure (bytes already sent)
+
+    @property
+    def total_retries(self) -> int:
+        return sum(a.retries for a in self.attempts)
+
+    @property
+    def fallback_used(self) -> bool:
         return len({a.provider for a in self.attempts}) > 1
 
 
@@ -198,3 +222,110 @@ class Router:
 
         summary = ", ".join(f"{a.provider}:{a.outcome}" for a in attempts)
         raise AllProvidersFailedError(f"all providers failed ({summary})", attempts=list(attempts))
+
+    async def execute_stream(
+        self, request: ChatCompletionRequest
+    ) -> AsyncIterator[StreamChunk | StreamOutcome]:
+        """Stream a completion. Retry/fallback apply only *before the first token*
+        is emitted; after that a failure ends the stream with a terminal
+        ``StreamOutcome`` whose ``error`` is set. Yields ``StreamChunk``s for each
+        increment and exactly one ``StreamOutcome`` last (unless it raises
+        ``AllProvidersFailedError`` before anything was streamed).
+        """
+        chain = self._provider_chain(request.provider)
+        log.info("router.stream_chain", chain=chain, requested=request.provider)
+        attempts: list[ProviderAttempt] = []
+        max_attempts = self._settings.retry_max_attempts
+
+        for provider in chain:
+            adapter = self._registry.get(provider)
+            model = request.model or provider
+
+            for i in range(max_attempts):
+                attempt = ProviderAttempt(
+                    provider=provider, model=model, outcome="error", retries=i
+                )
+                started = time.perf_counter()
+                first_token = False
+                agg_usage: NormalizedUsage | None = None
+                response_id: str | None = None
+                created: int | None = None
+                upstream_model: str | None = None
+                last_finish: str | None = None
+                try:
+                    async for chunk in adapter.stream(request):
+                        response_id = response_id or chunk.response_id
+                        created = created or chunk.created
+                        upstream_model = upstream_model or chunk.model
+                        if chunk.usage:
+                            agg_usage = chunk.usage
+                        if chunk.finish_reason:
+                            last_finish = chunk.finish_reason
+                        if chunk.delta:
+                            first_token = True
+                        if chunk.delta or chunk.finish_reason:
+                            yield chunk
+
+                    attempt.outcome = "success"
+                    attempt.latency_ms = round((time.perf_counter() - started) * 1000, 2)
+                    attempts.append(attempt)
+                    yield StreamOutcome(
+                        completion_id=response_id or f"gen_{uuid.uuid4().hex}",
+                        created=created or int(time.time()),
+                        provider_used=provider,
+                        model_used=model,
+                        upstream_model=upstream_model or model,
+                        usage=agg_usage or NormalizedUsage(),
+                        finish_reason=last_finish,
+                        attempts=attempts,
+                    )
+                    return
+                except ProviderBadRequestError as exc:
+                    attempt.outcome = "bad_request"
+                    attempt.error = str(exc)
+                    attempts.append(attempt)
+                    raise
+                except GatewayError as exc:
+                    attempt.outcome = _outcome_for(exc)
+                    attempt.error = str(exc)
+                    attempt.latency_ms = round((time.perf_counter() - started) * 1000, 2)
+
+                    if first_token:
+                        attempts.append(attempt)
+                        log.warning(
+                            "router.stream_failed_midstream", provider=provider, error=str(exc)
+                        )
+                        yield StreamOutcome(
+                            completion_id=response_id or f"gen_{uuid.uuid4().hex}",
+                            created=created or int(time.time()),
+                            provider_used=provider,
+                            model_used=model,
+                            upstream_model=upstream_model or model,
+                            usage=agg_usage or NormalizedUsage(),
+                            finish_reason=last_finish,
+                            attempts=attempts,
+                            error=exc,
+                        )
+                        return
+
+                    outcome = _outcome_for(exc)
+                    is_last = i == max_attempts - 1
+                    log.warning(
+                        "router.stream_attempt_failed",
+                        provider=provider,
+                        attempt=i + 1,
+                        outcome=outcome,
+                        will_retry=not is_last and outcome in _RETRYABLE,
+                        error=str(exc),
+                    )
+                    if is_last or outcome not in _RETRYABLE:
+                        attempts.append(attempt)
+                        break
+                    await self._sleep(self._backoff_delay(i))
+
+            log.warning("router.stream_provider_exhausted", provider=provider)
+
+        summary = ", ".join(f"{a.provider}:{a.outcome}" for a in attempts)
+        raise AllProvidersFailedError(
+            f"all providers failed while streaming ({summary})", attempts=list(attempts)
+        )

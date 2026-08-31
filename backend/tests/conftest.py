@@ -9,6 +9,7 @@ its translation code still runs against a constructed response object.
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import AsyncIterator
 
@@ -115,9 +116,48 @@ OPENAI_MODELS_FIXTURE = {
 }
 
 
+_OPENAI_STREAM_DELTAS = ["Hello", " from", " the", " OpenAI", " mock."]
+
+
+def _openai_stream_body() -> bytes:
+    base = {
+        "id": "chatcmpl-test123",
+        "object": "chat.completion.chunk",
+        "created": 1_700_000_000,
+        "model": "gpt-4o-mini-2024-07-18",
+    }
+    lines: list[str] = []
+
+    def frame(delta: dict, finish: str | None, *, choices: bool = True) -> str:
+        obj = {**base, "choices": []}
+        if choices:
+            obj["choices"] = [{"index": 0, "delta": delta, "finish_reason": finish}]
+        return f"data: {json.dumps(obj)}\n\n"
+
+    lines.append(frame({"role": "assistant"}, None))
+    for d in _OPENAI_STREAM_DELTAS:
+        lines.append(frame({"content": d}, None))
+    lines.append(frame({}, "stop"))
+    usage_obj = {
+        **base,
+        "choices": [],
+        "usage": {"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18},
+    }
+    lines.append(f"data: {json.dumps(usage_obj)}\n\n")
+    lines.append("data: [DONE]\n\n")
+    return "".join(lines).encode()
+
+
 def _openai_handler(request: httpx2.Request) -> httpx2.Response:
     path = request.url.path
     if path.endswith("/chat/completions"):
+        body = request.content or b""
+        if b'"stream": true' in body or b'"stream":true' in body:
+            return httpx2.Response(
+                200,
+                content=_openai_stream_body(),
+                headers={"content-type": "text/event-stream"},
+            )
         return httpx2.Response(200, json=CHAT_COMPLETION_FIXTURE)
     if path.endswith("/models"):
         return httpx2.Response(200, json=OPENAI_MODELS_FIXTURE)
@@ -163,9 +203,59 @@ ANTHROPIC_MODELS_FIXTURE = {
 }
 
 
+_ANTHROPIC_STREAM_DELTAS = ["Hello", " from", " the", " Anthropic", " mock."]
+
+
+def _anthropic_stream_body() -> bytes:
+    def ev(kind: str, data: dict) -> str:
+        return f"event: {kind}\ndata: {json.dumps({'type': kind, **data})}\n\n"
+
+    parts = [
+        ev(
+            "message_start",
+            {
+                "message": {
+                    "id": "msg_test123",
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "claude-3-5-sonnet-20241022",
+                    "content": [],
+                    "stop_reason": None,
+                    "stop_sequence": None,
+                    "usage": {"input_tokens": 13, "output_tokens": 1},
+                }
+            },
+        ),
+        ev("content_block_start", {"index": 0, "content_block": {"type": "text", "text": ""}}),
+    ]
+    for d in _ANTHROPIC_STREAM_DELTAS:
+        parts.append(
+            ev("content_block_delta", {"index": 0, "delta": {"type": "text_delta", "text": d}})
+        )
+    parts += [
+        ev("content_block_stop", {"index": 0}),
+        ev(
+            "message_delta",
+            {
+                "delta": {"stop_reason": "end_turn", "stop_sequence": None},
+                "usage": {"output_tokens": 9},
+            },
+        ),
+        ev("message_stop", {}),
+    ]
+    return "".join(parts).encode()
+
+
 def _anthropic_handler(request: httpx2.Request) -> httpx2.Response:
     path = request.url.path
     if path.endswith("/v1/messages"):
+        body = request.content or b""
+        if b'"stream": true' in body or b'"stream":true' in body:
+            return httpx2.Response(
+                200,
+                content=_anthropic_stream_body(),
+                headers={"content-type": "text/event-stream"},
+            )
         return httpx2.Response(200, json=ANTHROPIC_MESSAGE_FIXTURE)
     if path.endswith("/v1/models"):
         return httpx2.Response(200, json=ANTHROPIC_MODELS_FIXTURE)
@@ -205,9 +295,44 @@ GEMINI_RESPONSE = genai_types.GenerateContentResponse.model_validate(
 )
 
 
+GEMINI_STREAM_DELTAS = ["Hello", " from", " the", " Gemini", " mock."]
+
+
+def _gemini_stream_parts() -> list[genai_types.GenerateContentResponse]:
+    parts: list[genai_types.GenerateContentResponse] = []
+    for d in GEMINI_STREAM_DELTAS:
+        parts.append(
+            genai_types.GenerateContentResponse.model_validate(
+                {
+                    "candidates": [{"content": {"role": "model", "parts": [{"text": d}]}}],
+                    "response_id": "resp-test123",
+                    "model_version": "gemini-3.6-flash",
+                }
+            )
+        )
+    parts.append(
+        genai_types.GenerateContentResponse.model_validate(
+            {
+                "candidates": [{"finish_reason": "STOP"}],
+                "usage_metadata": {
+                    "prompt_token_count": 6,
+                    "candidates_token_count": 5,
+                    "thoughts_token_count": 4,
+                    "total_token_count": 15,
+                },
+                "response_id": "resp-test123",
+                "model_version": "gemini-3.6-flash",
+            }
+        )
+    )
+    return parts
+
+
 def make_gemini_adapter(
     response: genai_types.GenerateContentResponse | None = None,
     error: Exception | None = None,
+    stream_parts: list[genai_types.GenerateContentResponse] | None = None,
+    stream_error: Exception | None = None,
 ) -> GeminiAdapter:
     adapter = GeminiAdapter(make_settings(), client=genai.Client(api_key="test-key"))
 
@@ -216,7 +341,20 @@ def make_gemini_adapter(
             raise error
         return response or GEMINI_RESPONSE
 
+    async def fake_generate_content_stream(**_kwargs: object):  # type: ignore[no-untyped-def]
+        # Real SDK: `await ...generate_content_stream(...)` -> async iterator.
+        if stream_error is not None:
+            raise stream_error
+        parts = stream_parts if stream_parts is not None else _gemini_stream_parts()
+
+        async def _gen():  # type: ignore[no-untyped-def]
+            for part in parts:
+                yield part
+
+        return _gen()
+
     adapter._client.aio.models.generate_content = fake_generate_content  # type: ignore[method-assign]
+    adapter._client.aio.models.generate_content_stream = fake_generate_content_stream  # type: ignore[method-assign]
     return adapter
 
 

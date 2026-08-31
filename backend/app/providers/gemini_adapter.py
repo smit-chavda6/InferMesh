@@ -179,8 +179,39 @@ class GeminiAdapter(ProviderAdapter):
         )
 
     async def stream(self, request: ChatCompletionRequest) -> AsyncIterator[StreamChunk]:
-        raise NotImplementedError("streaming is implemented in Phase 5")
-        yield StreamChunk()  # pragma: no cover
+        system, contents = self._build_contents(request)
+        config = self._build_config(request, system)
+        model = self._resolve_model(request.model)
+        try:
+            stream = await self._client.aio.models.generate_content_stream(
+                model=model, contents=contents, config=config
+            )
+            async for part in stream:
+                try:
+                    text = part.text
+                except Exception:  # noqa: BLE001 — blocked parts can raise on .text
+                    text = None
+
+                finish_reason = None
+                if part.candidates:
+                    raw = getattr(part.candidates[0].finish_reason, "name", None)
+                    finish_reason = _FINISH_REASON.get(raw or "", (raw or "").lower() or None)
+
+                usage = self._usage(part.usage_metadata) if part.usage_metadata else None
+
+                if text or finish_reason or usage:
+                    yield StreamChunk(
+                        delta=text or "",
+                        finish_reason=finish_reason,
+                        usage=usage,
+                        response_id=part.response_id,
+                        model=part.model_version,
+                    )
+        except genai_errors.APIError as exc:
+            raise self._map_error(exc) from exc
+        except Exception as exc:  # provider boundary: always re-raise as a typed error
+            log.warning("gemini.stream_error", error=str(exc), error_type=type(exc).__name__)
+            raise self._map_error(exc) from exc
 
     async def list_models(self) -> list[ProviderModel]:
         try:

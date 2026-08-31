@@ -78,7 +78,9 @@ async def test_generic_openai_error_is_wrapped(mock_adapter: OpenAIAdapter) -> N
         await mock_adapter.complete(_req())
 
 
-async def test_stream_not_implemented(mock_adapter: OpenAIAdapter) -> None:
-    with pytest.raises(NotImplementedError):
-        async for _chunk in mock_adapter.stream(_req()):
-            pass
+async def test_stream_yields_deltas_then_usage(mock_adapter: OpenAIAdapter) -> None:
+    chunks = [c async for c in mock_adapter.stream(_req())]
+    assert "".join(c.delta for c in chunks) == "Hello from the OpenAI mock."
+    assert any(c.finish_reason == "stop" for c in chunks)
+    usage = next(c.usage for c in chunks if c.usage is not None)
+    assert (usage.prompt_tokens, usage.completion_tokens, usage.total_tokens) == (11, 7, 18)

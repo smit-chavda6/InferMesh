@@ -39,9 +39,19 @@ class NormalizedCompletion:
 
 @dataclass(slots=True)
 class StreamChunk:
+    """One increment of a streamed completion.
+
+    ``delta`` carries new text. ``usage`` / ``finish_reason`` normally arrive only
+    on the final chunk. ``response_id`` / ``created`` / ``model`` are populated on
+    whichever chunk(s) the provider includes them (usually the first).
+    """
+
     delta: str = ""
     finish_reason: str | None = None
     usage: NormalizedUsage | None = None
+    response_id: str | None = None
+    created: int | None = None
+    model: str | None = None
     raw: dict[str, Any] | None = None
 
 

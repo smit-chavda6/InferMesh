@@ -150,8 +150,41 @@ class AnthropicAdapter(ProviderAdapter):
         )
 
     async def stream(self, request: ChatCompletionRequest) -> AsyncIterator[StreamChunk]:
-        raise NotImplementedError("streaming is implemented in Phase 5")
-        yield StreamChunk()  # pragma: no cover
+        kwargs = self._build_kwargs(request)
+        kwargs["stream"] = True
+        input_tokens = 0
+        output_tokens = 0
+        message_id: str | None = None
+        try:
+            events = await self._client.messages.create(**kwargs)
+            async for event in events:
+                etype = getattr(event, "type", None)
+                if etype == "message_start":
+                    message_id = event.message.id
+                    input_tokens = event.message.usage.input_tokens
+                    yield StreamChunk(response_id=message_id, model=event.message.model)
+                elif etype == "content_block_delta":
+                    text = getattr(event.delta, "text", None)
+                    if text:
+                        yield StreamChunk(delta=text, response_id=message_id)
+                elif etype == "message_delta":
+                    if event.usage is not None:
+                        output_tokens = event.usage.output_tokens
+                    stop_reason = getattr(event.delta, "stop_reason", None)
+                    yield StreamChunk(
+                        finish_reason=_FINISH_REASON.get(stop_reason or "", stop_reason),
+                        usage=NormalizedUsage(
+                            prompt_tokens=input_tokens,
+                            completion_tokens=output_tokens,
+                            total_tokens=input_tokens + output_tokens,
+                        ),
+                        response_id=message_id,
+                    )
+        except anthropic.AnthropicError as exc:
+            raise self._map_error(exc) from exc
+        except Exception as exc:  # provider boundary: always re-raise as a typed error
+            log.warning("anthropic.stream_error", error=str(exc), error_type=type(exc).__name__)
+            raise ProviderError("anthropic", f"{type(exc).__name__}: {exc}") from exc
 
     async def list_models(self) -> list[ProviderModel]:
         try:

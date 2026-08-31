@@ -44,6 +44,17 @@ The response is an OpenAI-compatible chat completion body with an added
 `gateway` object (request id, provider used, cache status, fallback chain,
 retries, latency).
 
+Add `"stream": true` for Server-Sent Events — OpenAI-compatible
+`chat.completion.chunk` frames, then a final frame carrying `finish_reason`,
+`usage` and the `gateway` object, then `data: [DONE]`. Retry/fallback apply only
+before the first token; the usage row is still written once the stream ends.
+
+```bash
+curl -N -sS localhost:8000/v1/chat/completions \
+  -H 'content-type: application/json' \
+  -d '{"model":"gpt-4o-mini","stream":true,"messages":[{"role":"user","content":"hi"}]}'
+```
+
 ### Using an Azure OpenAI key
 
 Set in `.env`:
