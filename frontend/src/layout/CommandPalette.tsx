@@ -15,6 +15,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/overlays";
+import { PROVIDERS } from "@/lib/utils";
 
 const PAGES = [
   { to: "/", label: "Overview", icon: LayoutDashboard },
@@ -92,15 +93,15 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
             </Command.Group>
 
             <Command.Group heading="Filter requests by provider">
-              {["openai", "anthropic", "gemini"].map((p) => (
+              {PROVIDERS.map((p) => (
                 <Command.Item
-                  key={p}
-                  value={`provider ${p}`}
-                  onSelect={() => go(`/requests?provider=${p}`)}
-                  className="flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-sm capitalize data-[selected=true]:bg-bg-subtle"
+                  key={p.id}
+                  value={`provider ${p.id} ${p.label}`}
+                  onSelect={() => go(`/requests?provider=${p.id}`)}
+                  className="flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-sm data-[selected=true]:bg-bg-subtle"
                 >
                   <Boxes className="size-4 text-text-muted" />
-                  {p}
+                  {p.label}
                 </Command.Item>
               ))}
             </Command.Group>

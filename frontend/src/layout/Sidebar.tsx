@@ -40,7 +40,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <div className="grid size-7 place-items-center rounded-md bg-accent text-accent-fg">
           <Boxes className="size-4" />
         </div>
-        <span className="text-sm font-semibold tracking-tight">LLM Gateway</span>
+        <span className="text-sm font-semibold tracking-tight">InferMesh</span>
       </div>
 
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-2">

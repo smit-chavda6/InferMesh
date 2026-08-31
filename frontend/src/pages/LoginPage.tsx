@@ -24,8 +24,8 @@ export function LoginPage() {
             <Boxes className="size-5" />
           </div>
           <div>
-            <div className="text-sm font-semibold">LLM Gateway</div>
-            <div className="text-xs text-text-muted">Observability dashboard</div>
+            <div className="text-sm font-semibold">InferMesh</div>
+            <div className="text-xs text-text-muted">Gateway observability dashboard</div>
           </div>
         </div>
 

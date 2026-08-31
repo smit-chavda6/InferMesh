@@ -11,9 +11,9 @@ its output read, not assumed.
 
 1. Read `CLAUDE.md` (repo root) → then `docs/SPEC.md` §30 for phase defs/DoD.
 2. `git log --oneline` — one commit per completed phase.
-3. Current state: **Phases 1–10 COMPLETE & committed** (through commit
-   `Phase 10: dashboard UI`). **Next: Phase 11 (optional) — Azure AI Foundry
-   provider — or Phase 12: polish / a11y / frontend + E2E tests / perf numbers.**
+3. Current state: **Phases 1–11 COMPLETE & committed** (through commit
+   `Phase 11: Azure AI Foundry provider`). **Next: Phase 12 — polish / a11y /
+   dark-light / animations / frontend + Playwright E2E tests / measured perf.**
 4. Bring infra up: `docker compose up -d postgres redis` (repo root).
 5. Backend gate: `cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest`.
 6. Frontend gate: `cd frontend && npx tsc -b --noEmit && npm run build && npm run lint`.
@@ -792,3 +792,111 @@ proxy.**
   the built SPA (served same-origin by the gateway or a static layer) is Phase 12.
 - Bundle is a single chunk; route-level `React.lazy` code-splitting deferred to
   Phase 12.
+
+---
+
+## Phase 11 — Azure AI Foundry provider (optional/stretch — pursued)
+
+**Status: COMPLETE — a 4th provider, `azure_foundry`, live-verified end-to-end
+against the real Foundry resource (`complete` / `stream` / `health` / cost /
+persistence / dashboard filtering). Frontend renamed to "InferMesh" and every
+provider surface now lists Foundry.**
+
+### Why it was pursued
+The spec marks this optional. It was done because the credentials on hand are a
+Foundry resource, the adapter exercises a genuinely different API surface from
+the other three (raw REST, `/models` inference path, its own api-version and
+deployment model — not Azure OpenAI), and it made the "canonical provider list"
+in the backend explicit instead of a 3-tuple copied in five places.
+
+### Done — backend
+- **`app/providers/azure_foundry_adapter.py`** — `AzureFoundryAdapter(ProviderAdapter)`
+  over a plain `httpx.AsyncClient` (no new dependency; `httpx` was already
+  direct). Hits `POST {endpoint}/models/chat/completions?api-version=…` with an
+  `api-key` header. `_inference_base()` normalises the endpoint to `…/models`
+  (idempotent, with/without trailing slash). Full `complete` / `stream` (SSE
+  `data:` line parser, `[DONE]` sentinel, skips the empty-`choices` prompt-filter
+  preamble) / `list_models` (reports the configured deployment — no portable list
+  route) / `health_check` (tiny `max_completion_tokens: 16` probe — 1 is rejected
+  by reasoning deployments). `_map_status` → typed errors: 401/403 auth,
+  429 rate-limit, 400/404/422 bad-request, else `ProviderError`; timeout /
+  connect mapped too. Constructor takes an injectable client for tests.
+  Translates OpenAI-classic `max_tokens` → `max_completion_tokens` (same dialect
+  gap the OpenAI adapter handles; gpt-5.x deployments reject `max_tokens`).
+- **`config.py`** — `ALL_PROVIDERS = ("openai","anthropic","gemini","azure_foundry")`
+  as the one canonical order; `ProviderName` literal extended (here and in
+  `schemas/chat.py`). New `azure_foundry_{endpoint,api_key,api_version,model,
+  timeout_seconds}` settings + `azure_foundry_enabled` (key **and** endpoint) +
+  `provider_enabled()` entry. `available_providers()` and the FALLBACK_CHAIN
+  validator now iterate `ALL_PROVIDERS`. Fail-fast: key set without endpoint →
+  `ValueError`.
+- **`providers/registry.py`** — `azure_foundry` added to `_BUILDERS`.
+- **`api/routes/dashboard.py`** — the two hardcoded `("openai","anthropic",
+  "gemini")` loops (`/providers`, `/system/health`) replaced with `ALL_PROVIDERS`,
+  so both endpoints list/health-check all four (disabled ones show
+  `enabled:false` / `status:"disabled"`).
+- **`pricing.yaml`** — `azure_foundry` provider block (default + gpt-4o / gpt-4o-mini
+  / gpt-5.4 / llama-3.3-70b / mistral-large deployments, estimates flagged);
+  `version` bumped `2026-08-31` → `2026-09-01`.
+- **`.env.example`** — documented `AZURE_FOUNDRY_*`. **`backend/.env`** (gitignored)
+  — enabled against the same resource (`…/models` path, same key), `AZURE_FOUNDRY_MODEL=gpt-5.4`.
+  `FALLBACK_CHAIN` deliberately **not** put in `.env` (a JSON list there breaks
+  the `set -a && . ./.env` dev recipe — the quotes are stripped); it's a
+  process-env / explicit-routing opt-in and that's noted in the file.
+
+### Done — frontend (also: renamed to **InferMesh**)
+- Brand: `index.html` `<title>` → `InferMesh` (+ meta description); sidebar and
+  login wordmark → `InferMesh`; `package.json` / `package-lock.json` name →
+  `infermesh-dashboard`.
+- `lib/utils.ts` — `PROVIDERS` (id + label, mirrors `ALL_PROVIDERS`) and
+  `providerLabel(id)` helper (`azure_foundry` → "Azure AI Foundry", generic
+  fallback prettifies unknown ids). `api/types.ts` `ProviderName` extended.
+- Every provider surface routed through it: SystemHealthPage dependency labels,
+  RequestsPage + CommandPalette provider filters (were hardcoded 3-item lists),
+  ProvidersPage cards + routing-chain chips, `badges.ProviderTag`, RequestDrawer
+  provider + attempt-chain rows. `capitalize` on raw ids removed (would render
+  "Azure_foundry").
+
+### Verified (commands run, output read)
+- `cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy`
+  → clean (`mypy`: no issues found in 43 source files).
+- `cd backend && uv run pytest` → **156 passed, 8 skipped** (was 133) — new
+  `tests/test_azure_foundry_adapter.py` (23 cases: endpoint normalisation,
+  request/header/api-version shape, response normalisation, blank-model fallback,
+  the `max_tokens`→`max_completion_tokens` translation, HTTP→typed-error mapping
+  incl. timeout/connect, SSE stream parse + usage on the final chunk, stream
+  error mapping, health ok/fail, `list_models`, registry wiring, config gating,
+  endpoint-required validation, `azure_foundry` accepted in FALLBACK_CHAIN).
+  `test_dashboard_api.py` updated: `/providers` now asserts all four provider
+  rows and that `azure_foundry.enabled is False` with no key.
+- `cd frontend && npx tsc -b --noEmit && npm run build && npm run lint` → all
+  clean; `oxlint` **0 warnings**; bundle 846 kB (249 kB gzip).
+- **Live** against `https://dehixchatbot-resource.services.ai.azure.com/models`
+  (deployment `gpt-5.4`), driving the adapter directly and through the running
+  gateway:
+  - `complete` → `"pong"` / `"mesh online"`, `model gpt-5.4-2026-03-05`, real usage.
+  - `stream` → SSE chunks accumulate correctly; 6 `data:` frames through the
+    gateway's own `/v1/chat/completions?stream=true`.
+  - `health_check` → healthy, ~3 s.
+  - gateway metadata: `provider:"azure_foundry"`, fallback chain single success
+    hop, `cost_usd` costed from the new pricing block.
+  - both calls persisted → `GET /v1/requests?provider=azure_foundry` returns them;
+    `GET /v1/usage/cost-breakdown?group_by=provider` shows a 4th `azure_foundry`
+    row. `/v1/providers` and `/v1/system/health` list it `enabled:true` /
+    healthy. `providers_available=['openai','gemini','azure_foundry']` at startup.
+  - Full dashboard endpoint sweep through the Vite proxy → all 200; page
+    `<title>` served as `InferMesh`.
+
+### Deviations / notes
+- **Visual render still not screenshot-verified** — browser-automation extension
+  not connected this session (same as Phase 10). Covered indirectly: `tsc` +
+  `build` + `lint` green, every consumed endpoint exercised through the real dev
+  proxy, provider labels confirmed in the JSON the pages consume.
+- `docs/SPEC.md` is the verbatim spec and was **not** edited; the spec's line
+  about Foundry being a non-goal for the *core* build still stands — it was the
+  Phase 11 stretch. Architecture/provider docs updated in `backend/README.md`.
+- Seed script (`scripts/seed.py`) still generates only the original three
+  providers — historical `azure_foundry` volume is whatever real calls are made.
+  The provider page handles a zero-history enabled provider (shows enabled +
+  zeros) correctly.
+- No DB schema change → no migration.

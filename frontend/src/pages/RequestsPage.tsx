@@ -10,7 +10,7 @@ import { EmptyState, ErrorState, LoadingRows } from "@/components/States";
 import { RequestDrawer } from "@/components/RequestDrawer";
 import { useRequests } from "@/api/queries";
 import { useRange } from "@/hooks/useRange";
-import { cn, fmtDateTime, fmtInt, fmtMs, fmtUsd } from "@/lib/utils";
+import { cn, fmtDateTime, fmtInt, fmtMs, fmtUsd, PROVIDERS, providerLabel } from "@/lib/utils";
 
 const SORTS = ["created_at", "latency_ms", "total_tokens", "cost_usd"] as const;
 
@@ -104,15 +104,15 @@ export function RequestsPage() {
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
         />
-        {(["openai", "anthropic", "gemini"] as const).map((p) => (
+        {PROVIDERS.map((p) => (
           <Button
-            key={p}
+            key={p.id}
             size="sm"
-            variant={provider === p ? "default" : "outline"}
-            className="h-8 capitalize"
-            onClick={() => toggleParam("provider", p)}
+            variant={provider === p.id ? "default" : "outline"}
+            className="h-8"
+            onClick={() => toggleParam("provider", p.id)}
           >
-            {p}
+            {p.label}
           </Button>
         ))}
         <Button
@@ -202,7 +202,7 @@ export function RequestsPage() {
                   <TD className="font-mono text-xs text-text-muted">{r.request_id.slice(0, 16)}…</TD>
                   <TD className="text-text-muted">{fmtDateTime(r.created_at)}</TD>
                   <TD>
-                    <span className="capitalize">{r.provider}</span>
+                    <span>{providerLabel(r.provider)}</span>
                     <span className="text-text-faint"> · {r.model}</span>
                     {r.fallback_used && <span className="ml-1 text-warn">↪</span>}
                     {r.streamed && <span className="ml-1 text-text-faint">≈</span>}

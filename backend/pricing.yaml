@@ -9,7 +9,7 @@
 # Some entries (gpt-5.x, gemini-3.x) are best-effort estimates where no public
 # list price was on hand at authoring time — flagged with `estimated: true`.
 # =============================================================================
-version: "2026-08-31"
+version: "2026-09-01"
 currency: USD
 
 providers:
@@ -100,4 +100,33 @@ providers:
       gemini-pro-latest:
         input_per_1k: 0.00125
         output_per_1k: 0.01
+        estimated: true
+
+  # Azure AI Foundry (Phase 11). Foundry bills per underlying model at the same
+  # per-token rates as that model's first-party provider; deployment names are
+  # arbitrary, so `default` carries a mid-range estimate and known deployments
+  # mirror their upstream model.
+  azure_foundry:
+    default:
+      input_per_1k: 0.00125
+      output_per_1k: 0.01
+      estimated: true
+    models:
+      gpt-4o:
+        input_per_1k: 0.0025
+        output_per_1k: 0.01
+      gpt-4o-mini:
+        input_per_1k: 0.00015
+        output_per_1k: 0.0006
+      gpt-5.4:
+        input_per_1k: 0.00125
+        output_per_1k: 0.01
+        estimated: true
+      llama-3.3-70b-instruct:
+        input_per_1k: 0.00071
+        output_per_1k: 0.00071
+        estimated: true
+      mistral-large-2411:
+        input_per_1k: 0.002
+        output_per_1k: 0.006
         estimated: true

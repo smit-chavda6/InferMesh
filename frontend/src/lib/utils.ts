@@ -85,3 +85,21 @@ export const CHART_COLORS = [
   "var(--chart-4)",
   "var(--chart-5)",
 ];
+
+/** Canonical provider list — mirrors the backend's ALL_PROVIDERS (Phase 11). */
+export const PROVIDERS = [
+  { id: "openai", label: "OpenAI" },
+  { id: "anthropic", label: "Anthropic" },
+  { id: "gemini", label: "Gemini" },
+  { id: "azure_foundry", label: "Azure AI Foundry" },
+] as const;
+
+const PROVIDER_LABELS: Record<string, string> = Object.fromEntries(
+  PROVIDERS.map((p) => [p.id, p.label]),
+);
+
+/** Display name for a provider id; falls back to prettifying the raw id. */
+export function providerLabel(id: string | null | undefined): string {
+  if (!id) return "—";
+  return PROVIDER_LABELS[id] ?? id.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}

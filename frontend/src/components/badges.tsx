@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/primitives";
+import { providerLabel } from "@/lib/utils";
 
 export function StatusBadge({ status }: { status: "success" | "error" | string }) {
   return <Badge tone={status === "success" ? "ok" : "err"}>{status}</Badge>;
@@ -16,5 +17,5 @@ export function SeverityBadge({ severity }: { severity: string }) {
 }
 
 export function ProviderTag({ provider }: { provider: string }) {
-  return <span className="font-medium capitalize">{provider}</span>;
+  return <span className="font-medium">{providerLabel(provider)}</span>;
 }

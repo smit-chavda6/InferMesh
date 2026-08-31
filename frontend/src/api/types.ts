@@ -1,7 +1,7 @@
 /** TS mirrors of the backend's dashboard-ready response shapes (§27). */
 
 export type RangeKey = "1h" | "24h" | "7d" | "30d";
-export type ProviderName = "openai" | "anthropic" | "gemini";
+export type ProviderName = "openai" | "anthropic" | "gemini" | "azure_foundry";
 export type HealthStatus = "healthy" | "degraded" | "unhealthy" | "disabled" | "unknown";
 
 export interface AdminInfo {

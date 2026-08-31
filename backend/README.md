@@ -46,6 +46,24 @@ uv run ruff check . && uv run mypy && uv run pytest
   embedding key/deployment; without one it **degrades silently to exact-match
   only**.
 
+## Providers
+
+Four adapters behind one `ProviderAdapter` interface (`app/providers/`), each
+enabled by its own credentials and selectable per-request via the `provider`
+field or picked by the fallback chain:
+
+| id | API | enable with |
+|----|-----|-------------|
+| `openai` | OpenAI, or Azure OpenAI when `OPENAI_MODE=azure` | `OPENAI_API_KEY` (+ `AZURE_OPENAI_*`) |
+| `anthropic` | Anthropic Messages | `ANTHROPIC_API_KEY` |
+| `gemini` | Google `google-genai` | `GEMINI_API_KEY` |
+| `azure_foundry` | **Azure AI Model Inference** (`<res>.services.ai.azure.com/models`) — Phase 11 | `AZURE_FOUNDRY_ENDPOINT` + `AZURE_FOUNDRY_API_KEY` |
+
+`azure_foundry` is a distinct provider from `OPENAI_MODE=azure`: it targets the
+unified Foundry `/models` inference surface (its own `api-version`, its own
+deployments), implemented as a dependency-free `httpx` client. Add it to
+`FALLBACK_CHAIN` to include it in automatic routing.
+
 ## Seed data
 
 `scripts/seed.py` generates realistic historical `requests` rows (weighted
@@ -85,7 +103,8 @@ app/
   observability.py   UsageRecorder: one `requests` row per call (best-effort)
   db/                Base, async engine/session, SQLAlchemy models
   schemas/           request/response + gateway-metadata + read-model contracts
-  providers/         ProviderAdapter interface, per-provider adapters, registry
+  providers/         ProviderAdapter interface + adapters (openai/azure,
+                     anthropic, gemini, azure_foundry) + registry
   api/routes/        health + /v1/chat/completions + /v1/requests/{id}
 alembic/             migration environment + versions/
 pricing.yaml         versioned price list (point-in-time snapshot)

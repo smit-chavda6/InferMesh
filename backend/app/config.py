@@ -13,7 +13,12 @@ from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["development", "staging", "production", "test"]
-ProviderName = Literal["openai", "anthropic", "gemini"]
+ProviderName = Literal["openai", "anthropic", "gemini", "azure_foundry"]
+
+# Canonical provider order. `azure_foundry` (Phase 11) is the Azure AI Model
+# Inference API — distinct from the OpenAI adapter's `azure` mode, which targets
+# the Azure *OpenAI* API on the same resource.
+ALL_PROVIDERS: tuple[ProviderName, ...] = ("openai", "anthropic", "gemini", "azure_foundry")
 
 
 class Settings(BaseSettings):
@@ -111,6 +116,18 @@ class Settings(BaseSettings):
     gemini_default_model: str = "gemini-3.6-flash"
     gemini_timeout_seconds: float = Field(default=60.0, gt=0)
 
+    # --- Azure AI Foundry (Phase 11) -------------------------------------------
+    # The Azure AI Model Inference API exposed at
+    # ``https://<resource>.services.ai.azure.com/models`` — one OpenAI-shaped REST
+    # surface in front of every model deployed to a Foundry resource. Separate
+    # from OPENAI_MODE=azure (Azure OpenAI): different path, different versioning,
+    # its own deployments. ``azure_foundry_model`` is a deployment name.
+    azure_foundry_endpoint: str | None = None
+    azure_foundry_api_key: str | None = None
+    azure_foundry_api_version: str = "2024-05-01-preview"
+    azure_foundry_model: str = "gpt-4o-mini"
+    azure_foundry_timeout_seconds: float = Field(default=60.0, gt=0)
+
     # --- Reliability: retry / backoff / fallback ---------------------------
     # Total attempts per provider before giving up on it (1 initial + N-1 retries).
     retry_max_attempts: int = Field(default=3, ge=1, le=10)
@@ -145,6 +162,10 @@ class Settings(BaseSettings):
         return bool(self.gemini_api_key)
 
     @property
+    def azure_foundry_enabled(self) -> bool:
+        return bool(self.azure_foundry_api_key and self.azure_foundry_endpoint)
+
+    @property
     def semantic_cache_available(self) -> bool:
         """Semantic caching needs an OpenAI-family embedding capability."""
         if not (self.semantic_cache_enabled and self.openai_api_key):
@@ -158,10 +179,11 @@ class Settings(BaseSettings):
             "openai": self.openai_enabled,
             "anthropic": self.anthropic_enabled,
             "gemini": self.gemini_enabled,
+            "azure_foundry": self.azure_foundry_enabled,
         }.get(name, False)
 
     def available_providers(self) -> list[str]:
-        return [p for p in ("openai", "anthropic", "gemini") if self.provider_enabled(p)]
+        return [p for p in ALL_PROVIDERS if self.provider_enabled(p)]
 
     @model_validator(mode="after")
     def _validate(self) -> Settings:
@@ -171,6 +193,9 @@ class Settings(BaseSettings):
         if self.openai_mode == "azure" and self.openai_api_key and not self.azure_openai_endpoint:
             errors.append("AZURE_OPENAI_ENDPOINT is required when OPENAI_MODE=azure")
 
+        if self.azure_foundry_api_key and not self.azure_foundry_endpoint:
+            errors.append("AZURE_FOUNDRY_ENDPOINT is required when AZURE_FOUNDRY_API_KEY is set")
+
         if not self.database_url.startswith("postgresql+asyncpg://"):
             errors.append("DATABASE_URL must be a postgresql+asyncpg:// URL")
         if not self.redis_url.startswith(("redis://", "rediss://", "unix://")):
@@ -179,9 +204,7 @@ class Settings(BaseSettings):
         if self.retry_max_delay_seconds < self.retry_base_delay_seconds:
             errors.append("RETRY_MAX_DELAY_SECONDS must be >= RETRY_BASE_DELAY_SECONDS")
 
-        bad_provider = next(
-            (p for p in self.fallback_chain if p not in ("openai", "anthropic", "gemini")), None
-        )
+        bad_provider = next((p for p in self.fallback_chain if p not in ALL_PROVIDERS), None)
         if bad_provider is not None:
             errors.append(f"FALLBACK_CHAIN contains unknown provider {bad_provider!r}")
 

@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import require_admin
+from app.config import ALL_PROVIDERS
 from app.dashboard import queries as q
 from app.dashboard.alerts import evaluate_alerts
 from app.dashboard.timerange import TimeRange, pct_change, resolve_range
@@ -105,7 +106,7 @@ async def providers(
     chain = settings.fallback_chain
 
     items = []
-    for name in ("openai", "anthropic", "gemini"):
+    for name in ALL_PROVIDERS:
         stats = rollup.get(name, {})
         items.append(
             {
@@ -255,7 +256,7 @@ async def system_health(request: Request, session: SessionDep) -> dict[str, Any]
         }
 
     ph = {p["provider"]: p for p in await q.provider_health(session, window_minutes=5)}
-    for name in ("openai", "anthropic", "gemini"):
+    for name in ALL_PROVIDERS:
         if not app.state.settings.provider_enabled(name):
             deps[name] = {"status": "disabled", "checked_at": dt.datetime.now(dt.UTC)}
         else:

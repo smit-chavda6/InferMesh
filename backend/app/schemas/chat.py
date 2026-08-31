@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.schemas.gateway import GatewayMetadata
 
 Role = Literal["system", "developer", "user", "assistant", "tool"]
-ProviderName = Literal["openai", "anthropic", "gemini"]
+ProviderName = Literal["openai", "anthropic", "gemini", "azure_foundry"]
 
 
 class ChatMessage(BaseModel):

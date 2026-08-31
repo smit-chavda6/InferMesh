@@ -13,6 +13,7 @@ from app.config import Settings
 from app.errors import ProviderNotConfiguredError
 from app.logging_config import get_logger
 from app.providers.anthropic_adapter import AnthropicAdapter
+from app.providers.azure_foundry_adapter import AzureFoundryAdapter
 from app.providers.base import ProviderAdapter
 from app.providers.gemini_adapter import GeminiAdapter
 from app.providers.openai_adapter import OpenAIAdapter
@@ -23,6 +24,7 @@ _BUILDERS: dict[str, Callable[[Settings], ProviderAdapter]] = {
     "openai": OpenAIAdapter,
     "anthropic": AnthropicAdapter,
     "gemini": GeminiAdapter,
+    "azure_foundry": AzureFoundryAdapter,
 }
 
 

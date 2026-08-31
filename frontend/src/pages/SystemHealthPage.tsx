@@ -3,15 +3,14 @@ import { PageHeader } from "@/components/PageHeader";
 import { StatusDot } from "@/components/StatusDot";
 import { ErrorState, LoadingBlock } from "@/components/States";
 import { useSystemHealth } from "@/api/queries";
-import { fmtDateTime, fmtMs, fmtPct } from "@/lib/utils";
+import { fmtDateTime, fmtMs, fmtPct, providerLabel } from "@/lib/utils";
 
 const LABELS: Record<string, string> = {
   postgres: "PostgreSQL",
   redis: "Redis",
-  openai: "OpenAI",
-  anthropic: "Anthropic",
-  gemini: "Gemini",
 };
+
+const depLabel = (key: string) => LABELS[key] ?? providerLabel(key);
 
 export function SystemHealthPage() {
   const q = useSystemHealth();
@@ -38,7 +37,7 @@ export function SystemHealthPage() {
               {Object.entries(q.data.dependencies).map(([key, d]) => (
                 <Line
                   key={key}
-                  name={LABELS[key] ?? key}
+                  name={depLabel(key)}
                   status={d.status}
                   detail={
                     <>
@@ -64,7 +63,7 @@ export function SystemHealthPage() {
                 <span className="text-text-faint">→</span>
                 <div className="flex flex-col gap-2">
                   {Object.entries(q.data.dependencies).map(([key, d]) => (
-                    <Node key={key} label={LABELS[key] ?? key} status={d.status} />
+                    <Node key={key} label={depLabel(key)} status={d.status} />
                   ))}
                 </div>
               </div>

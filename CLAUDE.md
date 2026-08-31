@@ -13,19 +13,22 @@ observability dashboard. Continuity across sessions depends on three files:
 
 ## Where the build is (update this line when a phase completes)
 
-**Phases 1–10 COMPLETE and committed** (basic gateway → multi-provider → reliability
+**Phases 1–11 COMPLETE and committed** (basic gateway → multi-provider → reliability
 → persistence/cost → SSE streaming → Redis rate-limiting + caching → production
-hardening → dashboard backend APIs → seed script → **React/TS dashboard UI**).
-The **backend** is done and live-verified against the Azure + Gemini keys in
-`backend/.env`; `backend/scripts/seed.py` fills the DB with ~100k realistic
+hardening → dashboard backend APIs → seed script → React/TS dashboard UI →
+**Azure AI Foundry provider**). The **backend** is done and live-verified against
+the Azure + Gemini keys in `backend/.env`; there are now **four** providers
+(`openai`/azure, `anthropic`, `gemini`, `azure_foundry` — the last is the Azure
+AI Model Inference `/models` API, distinct from `OPENAI_MODE=azure`, live-verified
+end-to-end). `backend/scripts/seed.py` fills the DB with ~100k realistic
 historical rows (`uv run python -m scripts.seed --truncate`). The **frontend**
-(`frontend/`, Vite + Tailwind v4 + TanStack Query + Recharts + Radix) has every
-§6–§24 page wired to a real §27 endpoint through a thin typed client; `tsc` +
-`build` + `oxlint` are clean and every consumed endpoint was verified returning
-real data through the live dev proxy. Dev: `cd frontend && npm run dev` (proxies
-`/v1` + `/health` → `127.0.0.1:8000`).
-**Next: Phase 11 (optional) — Azure AI Foundry provider — or Phase 12: polish,
-a11y, responsive, animations, frontend + Playwright E2E tests, measured perf.**
+(`frontend/`, Vite + Tailwind v4 + TanStack Query + Recharts + Radix; branded
+**InferMesh**) has every §6–§24 page wired to a real §27 endpoint through a thin
+typed client; `tsc` + `build` + `oxlint` are clean and every consumed endpoint was
+verified returning real data through the live dev proxy. Dev: `cd frontend &&
+npm run dev` (proxies `/v1` + `/health` → `127.0.0.1:8000`).
+**Next: Phase 12 — polish, a11y, responsive, dark/light, animations, frontend +
+Playwright E2E tests, measured perf against the 100k-row seed.**
 
 ## How to work
 

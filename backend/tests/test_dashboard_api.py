@@ -134,7 +134,15 @@ async def test_providers_and_health(admin_client: AsyncClient, db_session: Async
     await seed_requests(db_session, n=60)
 
     providers = (await admin_client.get("/v1/providers?range=7d")).json()
-    assert {p["provider"] for p in providers["providers"]} == {"openai", "anthropic", "gemini"}
+    # every canonical provider is listed, enabled or not (azure_foundry is Phase 11)
+    assert {p["provider"] for p in providers["providers"]} == {
+        "openai",
+        "anthropic",
+        "gemini",
+        "azure_foundry",
+    }
+    foundry = next(p for p in providers["providers"] if p["provider"] == "azure_foundry")
+    assert foundry["enabled"] is False  # no key configured in tests
     assert providers["routing"]["primary"] == "openai"
     assert any(p["requests"] > 0 for p in providers["providers"])
 

@@ -2,7 +2,7 @@ import { Sheet, SheetContent } from "@/components/ui/overlays";
 import { CacheBadge, StatusBadge } from "@/components/badges";
 import { ErrorState, LoadingRows } from "@/components/States";
 import { useRequestDetail } from "@/api/queries";
-import { fmtDateTime, fmtInt, fmtMs, fmtUsd } from "@/lib/utils";
+import { fmtDateTime, fmtInt, fmtMs, fmtUsd, providerLabel } from "@/lib/utils";
 
 const PIPELINE = [
   "Request received",
@@ -43,7 +43,7 @@ export function RequestDrawer({ id, onClose }: { id: string | null; onClose: () 
                   <CacheBadge status={r.cache_status} />
                 </Field>
                 <Field label="Provider">
-                  <span className="capitalize">{r.provider}</span>
+                  <span>{providerLabel(r.provider)}</span>
                 </Field>
                 <Field label="Model">{r.model}</Field>
                 <Field label="Upstream model">{r.upstream_model ?? "—"}</Field>
@@ -83,7 +83,7 @@ export function RequestDrawer({ id, onClose }: { id: string | null; onClose: () 
                                 : "bg-err-bg text-err")
                           }
                         >
-                          {a.provider} · {a.outcome}
+                          {providerLabel(a.provider)} · {a.outcome}
                           {a.retries ? ` (${a.retries}×)` : ""}
                         </span>
                       </span>

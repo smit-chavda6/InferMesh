@@ -6,7 +6,7 @@ import { StatusDot } from "@/components/StatusDot";
 import { EmptyState, ErrorState, LoadingBlock, LoadingCards } from "@/components/States";
 import { useProviderHealth, useProviders } from "@/api/queries";
 import { useRange } from "@/hooks/useRange";
-import { cn, fmtInt, fmtMs, fmtPct, fmtUsd } from "@/lib/utils";
+import { cn, fmtInt, fmtMs, fmtPct, fmtUsd, providerLabel } from "@/lib/utils";
 
 export function ProvidersPage() {
   const [range] = useRange();
@@ -71,9 +71,9 @@ export function ProvidersPage() {
                   return (
                     <span key={name} className="flex items-center gap-1.5">
                       <span className="text-text-faint">{i === 0 ? "→" : "⇢"}</span>
-                      <span className="inline-flex items-center gap-1.5 rounded border border-border px-2 py-1 capitalize">
+                      <span className="inline-flex items-center gap-1.5 rounded border border-border px-2 py-1">
                         <StatusDot status={h?.status ?? "unknown"} />
-                        {name}
+                        {providerLabel(name)}
                         {i === 0 && <span className="text-[10px] text-accent">primary</span>}
                       </span>
                     </span>
@@ -95,9 +95,9 @@ export function ProvidersPage() {
               return (
                 <Card key={p.provider}>
                   <CardHeader className="flex-row items-center justify-between">
-                    <CardTitle className="flex items-center gap-2 capitalize">
+                    <CardTitle className="flex items-center gap-2">
                       <StatusDot status={h?.status ?? (p.enabled ? "unknown" : "disabled")} />
-                      {p.provider}
+                      {providerLabel(p.provider)}
                     </CardTitle>
                     <span
                       className={cn(
