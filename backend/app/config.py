@@ -46,6 +46,16 @@ class Settings(BaseSettings):
     # --- Redis ---------------------------------------------------------
     redis_url: str = "redis://localhost:6379/0"
 
+    # --- Dashboard admin auth (used from Phase 8; validated here at startup) ---
+    jwt_secret: str = "dev-only-change-me"
+    admin_email: str = "admin@example.com"
+    admin_password: str = "admin"
+
+    # --- Request limits ---------------------------------------------------
+    max_messages_per_request: int = Field(default=256, ge=1)
+    max_prompt_chars: int = Field(default=600_000, ge=1)
+    max_request_body_bytes: int = Field(default=5_000_000, ge=1024)
+
     # --- Client API keys / rate limiting --------------------------------
     # When true, /v1/chat/completions requires a valid `Authorization: Bearer`
     # gateway client key. When false, anonymous callers are allowed (dev/tests)
@@ -150,12 +160,54 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate(self) -> Settings:
+        """Hard, fail-fast checks on malformed / unsafe configuration."""
         errors: list[str] = []
+
         if self.openai_mode == "azure" and self.openai_api_key and not self.azure_openai_endpoint:
             errors.append("AZURE_OPENAI_ENDPOINT is required when OPENAI_MODE=azure")
+
+        if not self.database_url.startswith("postgresql+asyncpg://"):
+            errors.append("DATABASE_URL must be a postgresql+asyncpg:// URL")
+        if not self.redis_url.startswith(("redis://", "rediss://", "unix://")):
+            errors.append("REDIS_URL must be a redis:// / rediss:// / unix:// URL")
+
+        if self.retry_max_delay_seconds < self.retry_base_delay_seconds:
+            errors.append("RETRY_MAX_DELAY_SECONDS must be >= RETRY_BASE_DELAY_SECONDS")
+
+        bad_provider = next(
+            (p for p in self.fallback_chain if p not in ("openai", "anthropic", "gemini")), None
+        )
+        if bad_provider is not None:
+            errors.append(f"FALLBACK_CHAIN contains unknown provider {bad_provider!r}")
+
+        if self.environment == "production":
+            if self.jwt_secret in ("", "dev-only-change-me", "change-me-to-a-long-random-string"):
+                errors.append("JWT_SECRET must be set to a real secret in production")
+            if len(self.jwt_secret) < 32:
+                errors.append("JWT_SECRET must be at least 32 characters in production")
+            if self.admin_password in ("", "admin", "change-me", "admin-dev-password"):
+                errors.append("ADMIN_PASSWORD must be set to a real value in production")
+
         if errors:
-            raise ValueError("; ".join(errors))
+            raise ValueError("invalid configuration: " + "; ".join(errors))
         return self
+
+    def startup_warnings(self) -> list[str]:
+        """Non-fatal issues worth logging loudly at startup (readiness gates traffic)."""
+        warnings: list[str] = []
+        if not self.available_providers():
+            warnings.append(
+                "no LLM providers are configured — /v1/chat/completions will return 503"
+            )
+        elif not self.fallback_enabled and self.default_provider not in self.available_providers():
+            warnings.append(
+                f"default provider '{self.default_provider}' is not configured and fallback is off"
+            )
+        if self.semantic_cache_enabled and not self.semantic_cache_available:
+            warnings.append(
+                "SEMANTIC_CACHE_ENABLED but no embedding key/deployment — exact-match cache only"
+            )
+        return warnings
 
 
 @lru_cache

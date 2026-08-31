@@ -32,14 +32,14 @@ class ChatCompletionRequest(BaseModel):
     # clients keep working. Known optional fields below are forwarded to adapters.
     model_config = ConfigDict(extra="ignore")
 
-    model: str = Field(min_length=1)
-    messages: list[ChatMessage] = Field(min_length=1)
+    model: str = Field(min_length=1, max_length=256)
+    messages: list[ChatMessage] = Field(min_length=1, max_length=256)
     provider: ProviderName | None = None
 
     stream: bool = False
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     top_p: float | None = Field(default=None, ge=0.0, le=1.0)
-    max_tokens: int | None = Field(default=None, gt=0)
+    max_tokens: int | None = Field(default=None, gt=0, le=200_000)
     n: int | None = Field(default=None, ge=1, le=10)
     stop: str | list[str] | None = None
     presence_penalty: float | None = Field(default=None, ge=-2.0, le=2.0)

@@ -11,8 +11,8 @@ its output read, not assumed.
 
 1. Read `CLAUDE.md` (repo root) → then `docs/SPEC.md` §30 for phase defs/DoD.
 2. `git log --oneline` — one commit per completed phase.
-3. Current state: **Phases 1–6 COMPLETE & committed** (through commit
-   `Phase 6: Redis rate limiting + response caching`). **Next: Phase 7.**
+3. Current state: **Phases 1–7 COMPLETE & committed** (through commit
+   `Phase 7: production hardening`). **Next: Phase 8 — dashboard backend APIs.**
 4. Bring infra up: `docker compose up -d postgres redis` (repo root).
 5. Gate command: `cd backend && uv run ruff check . && uv run mypy && uv run pytest`.
 
@@ -493,3 +493,65 @@ accurate `streamed=true` row).**
    `cache_enabled=False`, `retry_base_delay_seconds=0` — Phase 6 features are
    opt-in per test (they add Redis state to flush). A `redis_ready` fixture
    flushes test Redis DB 15.
+
+---
+
+## Phase 7 — Production hardening
+
+**Status: COMPLETE — `docker compose up --build` brings up a healthy full stack
+from a clean checkout and serves a real request end-to-end; CI workflow written
+and every step verified locally.**
+
+### Done
+- **`backend/Dockerfile`** — multi-stage (`uv` builder → `python:3.13-slim`
+  runtime), non-root `app` user, bytecode-compiled venv, `HEALTHCHECK` hitting
+  `/health`. `backend/.dockerignore`. `backend/docker/entrypoint.sh` runs
+  `alembic upgrade head` (retry loop) then `exec uvicorn`.
+- **`docker-compose.yml`** — `backend` service: `build ./backend`,
+  `depends_on: {postgres: healthy, redis: healthy}`, `env_file ./.env`
+  (`required: false`), overrides `DATABASE_URL`/`REDIS_URL` to compose service
+  names, `LOG_JSON=true`, `restart: unless-stopped`. Frontend deferred to Phase 10.
+- **Startup config validation** (`Settings._validate`, fail-fast): DATABASE_URL
+  must be `postgresql+asyncpg://`; REDIS_URL scheme; retry delay ordering;
+  unknown provider in `FALLBACK_CHAIN`; in `ENVIRONMENT=production` a real
+  (≥32-char, non-default) `JWT_SECRET` and non-default `ADMIN_PASSWORD`.
+  `Settings.startup_warnings()` logs non-fatal issues (no providers, semantic
+  cache wanted but unavailable) — readiness gates traffic instead.
+- **Readiness probe** `GET /health/ready` — pings Postgres + Redis, checks a
+  provider is configured; 200 `ready` / 503 `not_ready` with a per-check body.
+  `/health` stays a shallow liveness probe.
+- **Input hardening** — `messages` ≤ 256, `model` ≤ 256 chars, `max_tokens`
+  ≤ 200 000 (Pydantic); oversized bodies rejected with **413** in the ASGI
+  middleware (reads `Content-Length`, `Connection: close`, never buffers the body).
+  `MAX_*` knobs in settings + `.env.example`.
+- **CI** — `.github/workflows/ci.yml`: `backend` job with `pgvector/pgvector:pg16`
+  + `redis:7` service containers → `uv sync --frozen` → ruff → ruff format --check
+  → mypy → create `gateway_test` → `alembic upgrade head`/`check`/`downgrade
+  base`/`upgrade head` → `pytest`. Separate `docker-build` job builds the image.
+
+### Verified (commands run, output read)
+- `uv run ruff check .` / `ruff format --check .` → clean
+- `uv run mypy` (strict, `app/`) → **no issues, 34 source files**
+- `uv run pytest` → **101 passed, 8 skipped** (new `tests/test_hardening.py` — 13:
+  5 config-validation, 4 readiness (ok / redis-down 503 / no-providers 503 /
+  `/health` shallow), 4 input (too-many-messages 422, 413 body, max_tokens 422)).
+- Migration cycle on a fresh DB: `upgrade head` → `alembic check` **clean** →
+  `downgrade base` → `upgrade head` → OK.
+- **`docker compose build backend` + `docker compose up -d`** → all 3 containers
+  report `healthy`; entrypoint applied migrations; `curl /health` and
+  `/health/ready` → 200; a real `POST /v1/chat/completions` to Azure `gpt-5.4`
+  through the container returned a valid completion (`cost_usd 6.4e-05`,
+  `cache MISS`) and the row landed in the containerised Postgres.
+  (Host→container `curl` was intermittently flaky mid-session — a Windows Docker
+  Desktop port-forward glitch, not the app: the container's own healthcheck and
+  in-container probes stayed green throughout.)
+
+### Deviations / notes
+1. **Frontend not in compose yet** — the dashboard is Phase 10; `docker-compose`
+   currently wires postgres + redis + backend. §3 lists all four; the frontend
+   service is added when it exists.
+2. **"CI passes on a clean PR" not observed** — no GitHub remote yet, so Actions
+   can't run. Every CI step was executed locally against the same Postgres/Redis
+   and passes; the workflow file is committed and will run on first push.
+3. Root `.env` (gitignored) is a copy of `backend/.env` so `docker compose` has
+   the provider keys for local runs; a fresh user does `cp .env.example .env`.

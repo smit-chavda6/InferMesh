@@ -1,6 +1,9 @@
-# Full local stack (postgres + redis + backend + frontend) is wired up in Phase 7.
-# For now: infrastructure dependencies only. Postgres uses the pgvector image so
-# the semantic cache (Phase 6) has vector storage available.
+# Local stack: postgres + redis + backend gateway.
+# The frontend service is added in Phase 10 (the dashboard isn't built yet).
+#
+#   cp .env.example .env && $EDITOR .env      # fill in provider keys
+#   docker compose up --build
+#   curl localhost:8000/health
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -30,6 +33,28 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - path: ./.env
+        required: false
+    environment:
+      # Point at the compose service names (the .env file uses localhost for
+      # host-side `uv run`).
+      DATABASE_URL: postgresql+asyncpg://gateway:gateway@postgres:5432/gateway
+      REDIS_URL: redis://redis:6379/0
+      LOG_JSON: "true"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   pgdata:

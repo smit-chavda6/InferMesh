@@ -18,6 +18,24 @@ docker-compose.yml   local infra (postgres + redis); full stack in Phase 7
 .env.example         every environment variable the stack reads
 ```
 
+## Run the stack with Docker
+
+```bash
+cp .env.example .env          # fill in provider keys
+docker compose up --build     # postgres + redis + backend
+curl localhost:8000/health         # liveness
+curl localhost:8000/health/ready   # readiness (probes Postgres + Redis + providers)
+```
+
+The backend image runs `alembic upgrade head` on start (retried until Postgres is
+reachable), then `uvicorn`. `docker compose` reads `./.env`; the `backend` service
+overrides `DATABASE_URL`/`REDIS_URL` to the compose service names. The frontend
+service is added in Phase 10.
+
+CI (`.github/workflows/ci.yml`): ruff → ruff format check → mypy → alembic
+up/check/down/up → pytest (against Postgres + Redis service containers) → a
+`docker build` of the backend image.
+
 ## Backend — local development
 
 ```bash

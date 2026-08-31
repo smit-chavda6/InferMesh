@@ -55,6 +55,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         db_ok = await app.state.db.ping()
         redis_ok = await app.state.redis.ping()
+        for warning in settings.startup_warnings():
+            log.warning("gateway.startup_warning", detail=warning)
         log.info(
             "gateway.startup",
             version=__version__,

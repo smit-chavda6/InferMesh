@@ -12,6 +12,7 @@ Responsibilities:
 
 from __future__ import annotations
 
+import json
 import time
 import uuid
 
@@ -21,11 +22,31 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from app.logging_config import get_logger
 
 REQUEST_ID_HEADER = "x-request-id"
+_DEFAULT_MAX_BODY_BYTES = 5_000_000
 log = get_logger("gateway.access")
 
 
 def _new_request_id() -> str:
     return f"req_{uuid.uuid4().hex}"
+
+
+async def _send_json(send: Send, status: int, body: dict[str, object], request_id: str) -> None:
+    payload = json.dumps(body).encode()
+    await send(
+        {
+            "type": "http.response.start",
+            "status": status,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(payload)).encode()),
+                # We reject before draining the request body; close so clients that
+                # are still uploading don't hang waiting for a keep-alive response.
+                (b"connection", b"close"),
+                (REQUEST_ID_HEADER.encode("latin-1"), request_id.encode("latin-1")),
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": payload})
 
 
 class RequestContextMiddleware:
@@ -49,6 +70,32 @@ class RequestContextMiddleware:
         method = scope.get("method", "-")
         path = scope.get("path", "-")
         start = time.perf_counter()
+
+        # Reject oversized bodies before reading them.
+        app = scope.get("app")
+        max_body = getattr(
+            getattr(getattr(app, "state", None), "settings", None),
+            "max_request_body_bytes",
+            _DEFAULT_MAX_BODY_BYTES,
+        )
+        content_length = headers.get("content-length")
+        if content_length and content_length.isdigit() and int(content_length) > max_body:
+            log.warning(
+                "request.body_too_large", content_length=int(content_length), limit=max_body
+            )
+            await _send_json(
+                send,
+                413,
+                {
+                    "error": {
+                        "type": "request_too_large",
+                        "message": f"request body exceeds {max_body} bytes",
+                        "request_id": request_id,
+                    }
+                },
+                request_id,
+            )
+            return
 
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(request_id=request_id, method=method, path=path)
