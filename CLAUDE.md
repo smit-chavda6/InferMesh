@@ -32,6 +32,18 @@ startup config validation, dependency health checks).
 - Migrations: verify `alembic upgrade head` (from empty) → `alembic check` →
   `alembic downgrade base` → `alembic upgrade head`.
 
+## Git / GitHub identity — REQUIRED
+
+All git commits and any GitHub operations for this repo use:
+
+- name: `smit-chavda6`
+- email: `smitchavda6756@gmail.com`
+
+Already set as this repo's local config. If it ever reads otherwise, run:
+`git config user.name "smit-chavda6" && git config user.email "smitchavda6756@gmail.com"`.
+Never commit under any other identity. (Keep the standard
+`Co-Authored-By: Claude …` / `Claude-Session:` trailers — those are separate.)
+
 ## Local environment (survives a terminal restart)
 
 - **Backend:** `backend/`, managed by `uv`. `cd backend && uv sync`.
