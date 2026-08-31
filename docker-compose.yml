@@ -1,5 +1,6 @@
 # Local stack: postgres + redis + backend gateway.
-# The frontend service is added in Phase 10 (the dashboard isn't built yet).
+# The frontend (frontend/) is run separately with `npm run dev` (it proxies to
+# the gateway); packaging the built SPA into this compose stack is future work.
 #
 #   cp .env.example .env && $EDITOR .env      # fill in provider keys
 #   docker compose up --build

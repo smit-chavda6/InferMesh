@@ -72,12 +72,14 @@ Never commit under any other identity. (Keep the standard
   If Docker Desktop isn't running, start it first (Windows GUI app).
 - **Secrets:** `backend/.env` (gitignored) holds the real Azure + Gemini keys.
   `.env.example` documents every variable.
-- **Frontend:** `frontend/` is a placeholder until Phase 10.
+- **Frontend:** `frontend/`, managed by `npm`. `cd frontend && npm install`.
+  `npm run dev` proxies `/v1` + `/health` → `127.0.0.1:8000`. E2E (`npm run e2e`)
+  needs infra up and the DB seeded.
 
 ## Project shape
 
 - Monorepo: `backend/` (FastAPI, async SQLAlchemy, Redis) + `frontend/` (React/TS,
-  Phase 10). Root `docker-compose.yml`, `.env.example`, `docs/SPEC.md`.
+  Vite). Root `docker-compose.yml`, `.env.example`, `docs/SPEC.md`.
 - One backend service, one frontend app, Postgres, Redis. Do **not** split into
   more services. Non-goals are listed in SPEC §1 — don't build them.
 - `backend/README.md` has the backend layout and command reference.
