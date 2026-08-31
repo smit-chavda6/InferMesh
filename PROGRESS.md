@@ -23,9 +23,21 @@ not assumed.
 Backend dependency manager: **uv** (`backend/pyproject.toml` + `backend/uv.lock`).
 
 ### Provider credentials available
-- **Azure OpenAI** key + endpoint (user-provided, not yet in repo).
-- **Gemini** key (user-provided, not yet in repo).
+- **Azure AI Foundry** resource (`*.services.ai.azure.com`), deployment `gpt-5.4`,
+  api-version `2024-05-01-preview`. In `backend/.env` (gitignored). **Live-verified.**
+- **Gemini** key in `backend/.env` (gitignored). Format `AQ.*` (not the classic
+  `AIza*` AI Studio shape) — to be validated in Phase 2.
 - No native OpenAI key, no Anthropic key.
+
+### Azure AI Foundry integration facts (verified live 2026-08-31)
+- The OpenAI SDK's `AsyncAzureOpenAI(azure_endpoint="https://<res>.services.ai.azure.com",
+  api_version="2024-05-01-preview", api_key=...)` works against this Foundry resource.
+  The `/api/projects/<project>` suffix from the portal is the `azure-ai-projects`
+  path and is **not** used for the OpenAI data plane — strip it.
+- `gpt-5.4` **rejects `max_tokens`** with `unsupported_parameter` and requires
+  `max_completion_tokens`. The OpenAI adapter now translates
+  `max_tokens -> max_completion_tokens` so the gateway's public contract stays
+  OpenAI-classic. `temperature` is accepted.
 
 ### Notable installed-library facts (verified against installed source, per §0.1.1)
 - `openai==3.6.0` — a major version well beyond the 1.x era. Talks over **`httpx2`**,
@@ -42,7 +54,7 @@ Backend dependency manager: **uv** (`backend/pyproject.toml` + `backend/uv.lock`
 
 ## Phase 1 — Basic gateway
 
-**Status: COMPLETE (offline DoD verified; live-call DoD pending a provider key in `backend/.env`).**
+**Status: COMPLETE — all DoD items verified, including the live end-to-end call.**
 
 ### Plan (pre-phase)
 - Monorepo skeleton: `backend/` (uv), `frontend/` placeholder, root `.env.example`,
@@ -73,19 +85,15 @@ Backend dependency manager: **uv** (`backend/pyproject.toml` + `backend/uv.lock`
 
 ### Verified (commands run, output read)
 - `uv run ruff check .` → **All checks passed**
-- `uv run ruff format .` → clean
+- `uv run ruff format --check .` → clean
 - `uv run mypy` (scope: `app/`, `strict = true`) → **Success: no issues found in 17 source files**
-- `uv run pytest` → **15 passed, 1 skipped** (skip = `test_live_openai` — no key)
-- `uv run python -c "from app.main import app"` → imports; `/health` +
-  `/v1/chat/completions` proven working by the passing ASGI-client tests.
-
-### NOT yet verified (honest gaps)
-- **Phase 1 DoD item "a real request against OpenAI succeeds end-to-end via the
-  gateway"** — requires a real key. To close it: put credentials in `backend/.env`
-  (Azure: `OPENAI_MODE=azure`, `OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`,
-  `AZURE_OPENAI_DEPLOYMENT`) then `cd backend && uv run pytest -m live`.
-  `tests/test_live_openai.py::test_live_gateway_roundtrip` drives a real request
-  through the ASGI app.
+- `uv run pytest` (offline) → **15 passed, 1 skipped** (live test skipped when
+  `OPENAI_API_KEY` is not exported — keeps the offline suite hermetic)
+- `uv run pytest -m live` (env from `backend/.env`) → **1 passed** —
+  `test_live_gateway_roundtrip` drove a real request through the full ASGI app
+  (middleware → router → Azure adapter → live `gpt-5.4`) and got a valid
+  completion + non-zero token usage + `gateway.provider == "openai"`.
+- `/health` returns 200 (asserted in `test_health`).
 
 ### Deviations from spec (with justification)
 1. **Adapter is dual-mode native/Azure OpenAI** instead of native-only. Spec puts

@@ -40,7 +40,9 @@ async def test_forwarded_params_are_passed_through(mock_adapter: OpenAIAdapter) 
     await mock_adapter.complete(_req(temperature=0.2, max_tokens=64, stop=["\n"]))
 
     assert captured["temperature"] == 0.2
-    assert captured["max_tokens"] == 64
+    # gateway accepts classic `max_tokens`; adapter speaks `max_completion_tokens`
+    assert captured["max_completion_tokens"] == 64
+    assert "max_tokens" not in captured
     assert captured["stop"] == ["\n"]
     assert "provider" not in captured
     assert "stream" not in captured

@@ -85,7 +85,14 @@ class OpenAIAdapter(ProviderAdapter):
             "model": self._resolve_model(request.model),
             "messages": [m.model_dump(exclude_none=True) for m in request.messages],
         }
-        kwargs.update(request.forwarded_params())
+        params = request.forwarded_params()
+        # The gateway's public contract accepts OpenAI-classic ``max_tokens``; the
+        # installed SDK / current models (o-series, gpt-5.x) require
+        # ``max_completion_tokens`` and reject ``max_tokens``. Translate here so
+        # callers never have to care which dialect the upstream speaks.
+        if "max_tokens" in params and "max_completion_tokens" not in params:
+            params["max_completion_tokens"] = params.pop("max_tokens")
+        kwargs.update(params)
         return kwargs
 
     @staticmethod
