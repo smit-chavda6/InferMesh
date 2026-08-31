@@ -119,6 +119,9 @@ class OpenAIAdapter(ProviderAdapter):
             resp = await self._client.chat.completions.create(**kwargs)
         except openai.OpenAIError as exc:
             raise self._map_error(exc) from exc
+        except Exception as exc:  # provider boundary: always re-raise as a typed error
+            log.warning("openai.unexpected_error", error=str(exc), error_type=type(exc).__name__)
+            raise ProviderError("openai", f"{type(exc).__name__}: {exc}") from exc
 
         choice = resp.choices[0] if resp.choices else None
         message = choice.message if choice is not None else None

@@ -13,7 +13,7 @@ async def test_chat_completion_happy_path(client: AsyncClient) -> None:
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
-    assert body["choices"][0]["message"]["content"] == "Hello from the mock provider."
+    assert body["choices"][0]["message"]["content"] == "Hello from the OpenAI mock."
     assert body["choices"][0]["finish_reason"] == "stop"
     assert body["usage"] == {"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18}
 
@@ -43,9 +43,3 @@ async def test_validation_error_envelope(client: AsyncClient) -> None:
 async def test_streaming_not_implemented_yet(client: AsyncClient) -> None:
     resp = await client.post("/v1/chat/completions", json={**_BODY, "stream": True})
     assert resp.status_code == 501
-
-
-async def test_unconfigured_provider_is_rejected(client: AsyncClient) -> None:
-    resp = await client.post("/v1/chat/completions", json={**_BODY, "provider": "anthropic"})
-    assert resp.status_code == 503
-    assert resp.json()["error"]["type"] == "provider_not_configured"

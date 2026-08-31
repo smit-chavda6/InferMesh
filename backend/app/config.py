@@ -48,6 +48,19 @@ class Settings(BaseSettings):
     azure_openai_api_version: str = "2024-10-21"
     azure_openai_deployment: str | None = None
 
+    # --- Anthropic -----------------------------------------------------------
+    anthropic_api_key: str | None = None
+    anthropic_base_url: str | None = None
+    anthropic_default_model: str = "claude-3-5-sonnet-latest"
+    anthropic_timeout_seconds: float = Field(default=60.0, gt=0)
+    # Anthropic's API requires max_tokens; used when a request doesn't set one.
+    anthropic_default_max_tokens: int = Field(default=1024, gt=0)
+
+    # --- Gemini ------------------------------------------------------------
+    gemini_api_key: str | None = None
+    gemini_default_model: str = "gemini-3.6-flash"
+    gemini_timeout_seconds: float = Field(default=60.0, gt=0)
+
     @property
     def openai_enabled(self) -> bool:
         if not self.openai_api_key:
@@ -56,11 +69,23 @@ class Settings(BaseSettings):
             return bool(self.azure_openai_endpoint)
         return True
 
+    @property
+    def anthropic_enabled(self) -> bool:
+        return bool(self.anthropic_api_key)
+
+    @property
+    def gemini_enabled(self) -> bool:
+        return bool(self.gemini_api_key)
+
+    def provider_enabled(self, name: str) -> bool:
+        return {
+            "openai": self.openai_enabled,
+            "anthropic": self.anthropic_enabled,
+            "gemini": self.gemini_enabled,
+        }.get(name, False)
+
     def available_providers(self) -> list[str]:
-        providers: list[str] = []
-        if self.openai_enabled:
-            providers.append("openai")
-        return providers
+        return [p for p in ("openai", "anthropic", "gemini") if self.provider_enabled(p)]
 
     @model_validator(mode="after")
     def _validate(self) -> Settings:

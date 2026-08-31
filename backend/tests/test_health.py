@@ -9,7 +9,7 @@ async def test_health_ok(client: AsyncClient) -> None:
     body = resp.json()
     assert body["status"] == "ok"
     assert body["service"] == "LLM Gateway"
-    assert body["providers_available"] == ["openai"]
+    assert body["providers_available"] == ["openai", "anthropic", "gemini"]
     assert "x-request-id" in resp.headers
 
 

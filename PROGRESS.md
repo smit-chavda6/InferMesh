@@ -113,3 +113,76 @@ Backend dependency manager: **uv** (`backend/pyproject.toml` + `backend/uv.lock`
   request-context middleware as pure ASGI. Relevant when Phase 5 adds SSE.
 - Azure `models.list()` may behave differently from native for `health_check()`;
   revisit in Phase 7/20 system-health work.
+
+---
+
+## Phase 2 — Multi-provider
+
+**Status: COMPLETE — DoD verified (2/3 providers live, all 3 via the same normalized
+shape; Anthropic live leg pending a key, same honest gap as Phase 1's native OpenAI).**
+
+### Plan (pre-phase)
+- Add `anthropic` + `google-genai` SDKs (verify installed API shapes first).
+- `AnthropicAdapter` and `GeminiAdapter` implementing the full `ProviderAdapter`
+  interface; translation logic lives only in the adapter (+ a tiny shared
+  `_common.py` for system-prompt hoisting / content flattening).
+- Register both in `ProviderRegistry._BUILDERS`; router already dispatches on the
+  request `provider` field (`resolve()`), default when omitted.
+- Tests: transport-mocked (httpx2) for Anthropic like OpenAI; boundary-mocked for
+  Gemini (heavier transport stack). A parametrized gateway test asserting the
+  three providers return a byte-identical top-level response shape. Live tests for
+  Gemini + a cross-provider shape check.
+
+### Done (post-phase)
+- `backend/app/providers/anthropic_adapter.py`, `gemini_adapter.py`, `_common.py`.
+- Registry builds all three lazily; `Settings` gained `anthropic_*` / `gemini_*`
+  knobs, `provider_enabled()` and a 3-provider `available_providers()`.
+- All adapters' `complete()` now guarantee a typed `GatewayError` on any failure
+  (SDK base error mapped, plus a catch-all that logs + re-raises as `ProviderError`)
+  — Phase 3's fallback logic can rely on that.
+- Translation specifics:
+  - **Anthropic**: system messages hoisted to top-level `system`; `max_tokens`
+    required, so request value or `ANTHROPIC_DEFAULT_MAX_TOKENS` (1024); `stop` →
+    `stop_sequences`; `stop_reason` → OpenAI `finish_reason`.
+  - **Gemini**: system → `config.system_instruction`; `assistant` role → `model`;
+    `max_tokens` → `max_output_tokens`; automatic function calling disabled;
+    `completion_tokens = total - prompt` so **thinking tokens are counted**
+    (Gemini 3.x thinks by default); blocked responses yield `content=None` +
+    `finish_reason="content_filter"` rather than an error.
+
+### Verified (commands run, output read)
+- `uv run ruff check .` / `ruff format --check .` → clean
+- `uv run mypy` (strict, `app/`) → **no issues found in 20 source files**
+- `uv run pytest` (offline) → **34 passed, 3 skipped** (skips = live)
+- `uv run pytest -m live` (env from `backend/.env`) → **3 passed**:
+  - `test_live_openai_roundtrip` — real Azure `gpt-5.4`
+  - `test_live_gemini_roundtrip_through_gateway` — real `gemini-3.6-flash`
+  - `test_live_same_call_shape_openai_and_gemini` — **same request body, only
+    provider/model changed, produced the identical top-level key set** across
+    Azure OpenAI and Gemini (the Phase 2 DoD, live).
+- `test_same_call_shape_across_providers[openai|anthropic|gemini]` (mocked) —
+  all three return `{id, object, created, model, choices, usage, gateway}` with
+  matching `choice`/`usage` structure.
+
+### Provider facts discovered (verified live 2026-08-31)
+- **Gemini key** works (auth OK). Model landscape has moved well past training
+  data: `gemini-2.0-flash` / `2.5-flash` / `1.5-flash` all return 404 "no longer
+  available"; current default chosen = **`gemini-3.6-flash`**. `google-genai`
+  `HttpOptions.timeout` is **milliseconds**; it has its own tenacity retry loop,
+  pinned to `attempts=1` so the gateway owns retries.
+- Gemini 3.x models **think by default** — with a small `max_output_tokens` the
+  visible text can be empty (`finish_reason=MAX_TOKENS`) while `thoughts_token_count`
+  is spent. Live tests use `max_tokens: 512`.
+- `anthropic==1.2.0` also rides on `httpx2`; `client.models.list()` exists.
+
+### Deviations from spec (with justification)
+1. **Anthropic live call not verified** — no API key available. Adapter is fully
+   implemented and covered by transport-mocked tests proving request translation
+   and the normalized response shape. Closing this needs `ANTHROPIC_API_KEY` in
+   `backend/.env`, then `uv run pytest -m live` (a live Anthropic test mirroring
+   `test_live_gemini` should be added at that point).
+2. Gemini adapter is **boundary-mocked** in unit tests (patching
+   `client.aio.models.generate_content`) rather than transport-mocked. The SDK's
+   async transport stack is more involved than a single httpx client; the
+   translation code (`_build_contents`/`_build_config`/`_usage`) still executes
+   against a constructed response, and the live tests exercise the real transport.

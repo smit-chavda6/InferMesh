@@ -19,7 +19,7 @@ def _req(**overrides: object) -> ChatCompletionRequest:
 
 async def test_complete_normalizes_response(mock_adapter: OpenAIAdapter) -> None:
     result = await mock_adapter.complete(_req())
-    assert result.content == "Hello from the mock provider."
+    assert result.content == "Hello from the OpenAI mock."
     assert result.role == "assistant"
     assert result.finish_reason == "stop"
     assert result.model == "gpt-4o-mini-2024-07-18"

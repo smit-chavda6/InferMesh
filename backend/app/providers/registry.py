@@ -1,22 +1,28 @@
 """Provider registry + minimal router.
 
-Phase 1: build and cache adapters lazily, resolve a request to a single provider.
-Phase 3 layers retry/backoff/fallback on top of this; Phase 2 registers the
-Anthropic and Gemini adapters here.
+Phase 2: builds and caches all three adapters lazily and resolves a request to a
+single provider via its ``provider`` field (or the configured default). Phase 3
+layers retry/backoff/fallback on top of ``resolve``.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from app.config import Settings
 from app.errors import ProviderNotConfiguredError
 from app.logging_config import get_logger
+from app.providers.anthropic_adapter import AnthropicAdapter
 from app.providers.base import ProviderAdapter
+from app.providers.gemini_adapter import GeminiAdapter
 from app.providers.openai_adapter import OpenAIAdapter
 
 log = get_logger(__name__)
 
-_BUILDERS = {
-    "openai": lambda settings: OpenAIAdapter(settings),
+_BUILDERS: dict[str, Callable[[Settings], ProviderAdapter]] = {
+    "openai": OpenAIAdapter,
+    "anthropic": AnthropicAdapter,
+    "gemini": GeminiAdapter,
 }
 
 
