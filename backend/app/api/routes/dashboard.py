@@ -60,6 +60,22 @@ async def usage_summary(
     return summary
 
 
+@router.get("/usage/cost-breakdown")
+async def cost_breakdown(
+    session: SessionDep,
+    range: RangeQ = "24h",
+    group_by: Annotated[str, Query(pattern="^(model|provider|project)$")] = "model",
+    frm: Annotated[dt.datetime | None, Query(alias="from")] = None,
+    to: dt.datetime | None = None,
+) -> dict[str, Any]:
+    tr = _range(range, frm, to)
+    return {
+        "range": {"key": tr.key, "start": tr.start, "end": tr.end},
+        "group_by": group_by,
+        "rows": await q.cost_breakdown(session, tr, group_by),
+    }
+
+
 @router.get("/usage/timeseries")
 async def usage_timeseries(
     session: SessionDep,

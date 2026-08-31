@@ -13,22 +13,29 @@ observability dashboard. Continuity across sessions depends on three files:
 
 ## Where the build is (update this line when a phase completes)
 
-**Phases 1–9 COMPLETE and committed** (basic gateway → multi-provider → reliability
+**Phases 1–10 COMPLETE and committed** (basic gateway → multi-provider → reliability
 → persistence/cost → SSE streaming → Redis rate-limiting + caching → production
-hardening → dashboard backend APIs → seed script). The whole **backend** is done
-and live-verified against the Azure + Gemini keys in `backend/.env`;
-`backend/scripts/seed.py` fills the DB with ~100k realistic historical rows
-(`uv run python -m scripts.seed --truncate`).
-**Next: Phase 10 — the React/TS dashboard** (Vite + Tailwind + shadcn/ui + TanStack
-Query + Recharts; `frontend/`; every §6–§24 page against the real §27 endpoints).
+hardening → dashboard backend APIs → seed script → **React/TS dashboard UI**).
+The **backend** is done and live-verified against the Azure + Gemini keys in
+`backend/.env`; `backend/scripts/seed.py` fills the DB with ~100k realistic
+historical rows (`uv run python -m scripts.seed --truncate`). The **frontend**
+(`frontend/`, Vite + Tailwind v4 + TanStack Query + Recharts + Radix) has every
+§6–§24 page wired to a real §27 endpoint through a thin typed client; `tsc` +
+`build` + `oxlint` are clean and every consumed endpoint was verified returning
+real data through the live dev proxy. Dev: `cd frontend && npm run dev` (proxies
+`/v1` + `/health` → `127.0.0.1:8000`).
+**Next: Phase 11 (optional) — Azure AI Foundry provider — or Phase 12: polish,
+a11y, responsive, animations, frontend + Playwright E2E tests, measured perf.**
 
 ## How to work
 
 - One phase at a time. State a 3–6 bullet plan, implement the smallest complete
   increment, run the gates, fix failures, update `PROGRESS.md`, commit, then stop
   or continue per the user.
-- **Gates (run every phase, read the real output):**
+- **Backend gate (run every backend phase, read the real output):**
   `cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest`
+- **Frontend gate (run every frontend phase):**
+  `cd frontend && npx tsc -b --noEmit && npm run build && npm run lint`
 - Live provider tests: `cd backend && set -a && . ./.env && set +a && uv run pytest -m live`
   (on Windows bash). They hit real Azure/Gemini; Gemini often 429s on free tier
   and those tests skip themselves — that's expected.

@@ -11,10 +11,13 @@ its output read, not assumed.
 
 1. Read `CLAUDE.md` (repo root) → then `docs/SPEC.md` §30 for phase defs/DoD.
 2. `git log --oneline` — one commit per completed phase.
-3. Current state: **Phases 1–9 COMPLETE & committed** (through commit
-   `Phase 9: seed / demo data`). **Next: Phase 10 — the React/TS dashboard UI.**
+3. Current state: **Phases 1–10 COMPLETE & committed** (through commit
+   `Phase 10: dashboard UI`). **Next: Phase 11 (optional) — Azure AI Foundry
+   provider — or Phase 12: polish / a11y / frontend + E2E tests / perf numbers.**
 4. Bring infra up: `docker compose up -d postgres redis` (repo root).
-5. Gate command: `cd backend && uv run ruff check . && uv run mypy && uv run pytest`.
+5. Backend gate: `cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest`.
+6. Frontend gate: `cd frontend && npx tsc -b --noEmit && npm run build && npm run lint`.
+   Dev: `cd frontend && npm run dev` (Vite proxies `/v1` + `/health` → `127.0.0.1:8000`).
 
 ---
 
@@ -679,3 +682,113 @@ non-trivial numbers; overview endpoints < ~80ms server-side against 100k rows.**
 - Seed throughput (~2.4k rows/s) is dominated by per-row Python work
   (`pricing.cost` regex+Decimal, `uuid4`, lognormal draws). asyncpg `COPY` would
   be faster; ~41 s for a one-time 100k seed is acceptable, noted for Phase 12.
+
+---
+
+## Phase 10 — Dashboard UI (React / TypeScript)
+
+**Status: COMPLETE — the full §6–§24 dashboard, every page wired to a real §27
+endpoint through a thin typed client, dark-first. Frontend gate green; every
+endpoint the UI calls verified returning real seeded data through the live Vite
+proxy.**
+
+### Plan (stated before starting)
+- Vite + React 19 + TS + Tailwind v4 + TanStack Query v5 + React Router v7 +
+  Recharts + Radix/shadcn-style primitives + cmdk. `@` path alias.
+- Thin typed API layer (`api/client.ts` + `api/types.ts` + `api/queries.ts`);
+  components never call `fetch` directly.
+- One page per spec section, each against its real §27 endpoint, with
+  loading / empty / error states and no hardcoded numbers.
+- Dev proxies `/v1` + `/health` to the gateway so the browser is single-origin
+  (first-party admin cookie, no CORS).
+
+### Done
+- **Tooling**: `frontend/` is a Vite 8 app — `vite.config.ts` (`@tailwindcss/vite`,
+  `@vitejs/plugin-react`, `@` → `src`, dev proxy `/v1` + `/health` →
+  **`http://127.0.0.1:8000`**; `127.0.0.1` not `localhost` — on Windows the latter
+  resolves to `::1` first and stalls if the gateway only bound IPv4). `oxlint`
+  as the linter (`.oxlintrc.json`). TS is strict + `erasableSyntaxOnly` +
+  `verbatimModuleSyntax` (so: no constructor parameter-properties, `import type`
+  for type-only imports).
+- **API layer** (components never `fetch`):
+  - `api/client.ts` — `apiFetch<T>` (`credentials:"include"`, unwraps the
+    `{error:{type,message}}` envelope into a typed `ApiError`), `qs()` param
+    builder.
+  - `api/types.ts` — hand-written TS mirrors of every §27 response shape;
+    cross-checked field-by-field against live responses.
+  - `api/queries.ts` — one TanStack hook per endpoint (`useUsageSummary`,
+    `useUsageTimeseries`, `useCostBreakdown`, `useRequests`, `useLiveRequests`
+    (polls via `refetchInterval`), `useRequestDetail`, `useProviders`,
+    `useProviderHealth`, `useCacheStats`, `useRateLimits`, `useProjects`,
+    `useAlerts`, `useSystemHealth`) + auth + project mutations. Query client
+    retries skip 4xx and window-focus refetch is off.
+- **New backend endpoint** to back the Costs page breakdown table:
+  **`GET /v1/usage/cost-breakdown?range=&group_by=model|provider|project`**
+  (`app/api/routes/dashboard.py`) → `q.cost_breakdown()` in
+  `app/dashboard/queries.py`: one SQL `GROUP BY` over `requests` with
+  `sum(prompt_tokens|completion_tokens|cost_usd|cache_saved_usd)`, ordered by
+  cost desc, `avg_cost_per_request` computed per row. `group_by` is a regex
+  `Query(pattern=...)` (bad value → 422). Behind `require_admin` like the rest.
+- **UI kit** (`components/ui/`): Radix-backed `primitives.tsx` (Button/Card/
+  Badge/Input/Skeleton, cva variants), `overlays.tsx` (Dialog/Sheet/Dropdown/
+  Tooltip/Tabs), `table.tsx`. Shared `States.tsx` (Loading*/ErrorState/
+  EmptyState), `StatusDot`, `RangePicker` (URL-synced 1h/24h/7d/30d),
+  `KpiCard`, `badges.tsx`, `charts.tsx` (Recharts wrappers: request-volume
+  stacked area, trend line, bar/donut by group, mini sparkline),
+  `RequestDrawer` (right Sheet: request detail + routing chain + timeline).
+- **App shell**: `layout/` — `Sidebar` (10-item nav, gateway-status pill from
+  `useSystemHealth`, unread-alert badge from `useAlerts`), `CommandPalette`
+  (cmdk ⌘K: page nav + provider filter + request-ID jump), `AppLayout`
+  (desktop sidebar + mobile Sheet + top bar with search/theme/logout).
+  `main.tsx` (QueryClient + Router + TooltipProvider), `App.tsx`
+  (`useAuthMe()` → spinner → 401 renders `<LoginPage>` → else routed pages).
+- **Pages** (`pages/`, one per spec section, all real data + loading/empty/error):
+  Login, Overview (KPI cards + request-volume chart + provider-health list),
+  Requests (debounced search, URL-param filters, sortable columns, pagination,
+  detail drawer; page snaps to 1 on filter change via the render-phase
+  "adjust state on prop change" pattern), Providers (donut/bar comparison +
+  routing viz + per-provider cards), Costs (KPIs + cost trend line + breakdown
+  table with model/provider/project tabs; projected monthly = daily avg × 30,
+  labelled an estimate), Cache, Rate Limits, Projects (create / rotate / revoke
+  dialogs + reveal-key-once), Alerts, Live Activity (`useLiveRequests`, 4 s poll,
+  pause/resume), System Health (status lines + dependency graph).
+- **Theme**: dark-first developer-dashboard palette (near-black `--bg #0a0c10`,
+  indigo accent), light theme via tokens, `useTheme` persists to `localStorage`.
+
+### Verified (commands run, output read)
+- `cd frontend && npx tsc -b --noEmit` → clean.
+- `npm run build` → `✓ built` — `dist/index.js` 846 kB (249 kB gzip),
+  `index.css` 27 kB. The >500 kB chunk warning is advisory (single-bundle SPA);
+  code-splitting noted for Phase 12.
+- `npm run lint` (`oxlint`) → **0 warnings, 0 errors** (the two earlier
+  `react(set-state-in-effect)` advisories in `CommandPalette.tsx` and
+  `RequestsPage.tsx` were rewritten away — palette query reset moved into the
+  `onOpenChange` wrapper; page-reset moved to the render-phase previous-value
+  pattern).
+- `cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy`
+  → clean (`mypy`: no issues, 43 source files).
+- `cd backend && uv run pytest` → **133 passed, 8 skipped** (live-key tests).
+  New `tests/test_dashboard_api.py`: `test_cost_breakdown_shape`
+  (parametrised model/provider/project — rows ordered by cost desc, per-row
+  `avg_cost_per_request == cost/requests`, request counts sum back to the seed
+  total), `test_cost_breakdown_rejects_bad_group_by` (422), and
+  `/v1/usage/cost-breakdown` added to the auth-required sweep.
+- **End-to-end against the live stack**: host `uvicorn app.main:app --port 8000`
+  (100k seeded rows in the `gateway` DB) + `npm run dev`. Logged in as the admin
+  through the Vite proxy, then hit every endpoint the UI calls
+  (`/v1/auth/me`, `usage/summary`, `usage/timeseries`, `usage/cost-breakdown`,
+  `requests`, `providers`, `providers/health`, `cache/stats`, `rate-limits`,
+  `projects`, `alerts`, `system/health`) → **all 200 with real aggregated data**.
+  `providers/health` and `alerts` return empty sets (seed rows are outside the
+  5-min health window; no alerts evaluated) → the pages render their EmptyState.
+
+### Deviations / notes
+- **Visual render not screenshot-verified this session** — the browser-automation
+  extension was not connected. Verification was: types cross-checked field-by-field
+  against live JSON, every consumed endpoint exercised through the real dev proxy,
+  and `tsc` + `build` + `lint` green. A screenshot pass belongs in Phase 12 with
+  the a11y / responsive / animation work.
+- `docker-compose.yml` still has no `frontend` service — production packaging of
+  the built SPA (served same-origin by the gateway or a static layer) is Phase 12.
+- Bundle is a single chunk; route-level `React.lazy` code-splitting deferred to
+  Phase 12.

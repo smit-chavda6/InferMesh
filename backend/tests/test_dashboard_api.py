@@ -12,6 +12,7 @@ from .conftest import seed_requests
 
 _PROTECTED = [
     "/v1/usage/summary",
+    "/v1/usage/cost-breakdown",
     "/v1/usage/timeseries",
     "/v1/requests",
     "/v1/providers",
@@ -47,6 +48,43 @@ async def test_usage_summary_shape(admin_client: AsyncClient, db_session: AsyncS
     assert isinstance(body["sparkline"], list) and sum(body["sparkline"]) > 0
     # change-vs-prev keys present (may be None if no prior period)
     assert "total_requests_change_pct" in body
+
+
+@pytest.mark.parametrize(
+    ("group_by", "key"),
+    [("model", "model"), ("provider", "provider"), ("project", "project")],
+)
+async def test_cost_breakdown_shape(
+    admin_client: AsyncClient, db_session: AsyncSession, group_by: str, key: str
+) -> None:
+    await seed_requests(db_session, n=80)
+    body = (await admin_client.get(f"/v1/usage/cost-breakdown?range=7d&group_by={group_by}")).json()
+
+    assert body["group_by"] == group_by
+    rows = body["rows"]
+    assert len(rows) > 0
+    # rows are ordered by cost, descending
+    costs = [r["cost_usd"] for r in rows]
+    assert costs == sorted(costs, reverse=True)
+    # every row carries the grouping dimension and consistent aggregates
+    assert all(key in r for r in rows)
+    if group_by == "model":
+        assert all("provider" in r for r in rows)
+    for r in rows:
+        assert r["requests"] > 0
+        assert r["cost_usd"] >= 0
+        assert r["input_tokens"] >= 0 and r["output_tokens"] >= 0
+        if r["cost_usd"] > 0:
+            assert r["avg_cost_per_request"] == pytest.approx(
+                r["cost_usd"] / r["requests"], rel=1e-3
+            )
+    # request counts sum back to the seeded total
+    assert sum(r["requests"] for r in rows) == 80
+
+
+async def test_cost_breakdown_rejects_bad_group_by(admin_client: AsyncClient) -> None:
+    resp = await admin_client.get("/v1/usage/cost-breakdown?range=7d&group_by=bogus")
+    assert resp.status_code == 422
 
 
 async def test_usage_timeseries_buckets(

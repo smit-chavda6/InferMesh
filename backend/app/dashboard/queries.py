@@ -234,6 +234,60 @@ async def requests_page(
     return items, int(total)
 
 
+# group_by -> (select cols, group-by cols)
+_BREAKDOWN_DIM = {
+    "model": ("provider, model", "provider, model"),
+    "provider": ("provider", "provider"),
+    "project": ("coalesce(project_name, 'anonymous') AS grp", "grp"),
+}
+
+
+async def cost_breakdown(
+    session: AsyncSession, tr: TimeRange, group_by: str = "model"
+) -> list[dict[str, Any]]:
+    sel, grp = _BREAKDOWN_DIM.get(group_by, _BREAKDOWN_DIM["model"])
+    rows = (
+        (
+            await session.execute(
+                text(f"""
+                SELECT {sel},
+                       count(*)                            AS requests,
+                       coalesce(sum(prompt_tokens), 0)     AS input_tokens,
+                       coalesce(sum(completion_tokens), 0) AS output_tokens,
+                       coalesce(sum(cost_usd), 0)          AS cost,
+                       coalesce(sum(cache_saved_usd), 0)   AS saved
+                FROM requests
+                WHERE created_at >= :start AND created_at < :end
+                GROUP BY {grp}
+                ORDER BY cost DESC
+                """),
+                {"start": tr.start, "end": tr.end},
+            )
+        )
+        .mappings()
+        .all()
+    )
+    out = []
+    for r in rows:
+        reqs = int(r["requests"])
+        row: dict[str, Any] = {
+            "requests": reqs,
+            "input_tokens": int(r["input_tokens"]),
+            "output_tokens": int(r["output_tokens"]),
+            "cost_usd": _f(r["cost"]),
+            "cost_saved_usd": _f(r["saved"]),
+            "avg_cost_per_request": round(_f(r["cost"]) / reqs, 8) if reqs else 0.0,
+        }
+        if group_by == "model":
+            row["provider"], row["model"] = r["provider"], r["model"]
+        elif group_by == "provider":
+            row["provider"] = r["provider"]
+        else:
+            row["project"] = r["grp"]
+        out.append(row)
+    return out
+
+
 async def provider_rollup(session: AsyncSession, tr: TimeRange) -> list[dict[str, Any]]:
     rows = (
         await session.execute(
