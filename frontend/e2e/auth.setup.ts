@@ -10,7 +10,8 @@ export const AUTH_FILE = "e2e/.auth/admin.json";
 setup("authenticate", async ({ page }) => {
   await page.goto("/");
   await page.getByLabel("Admin email").fill(ADMIN_EMAIL);
-  await page.getByLabel("Password").fill(ADMIN_PASSWORD);
+  // exact — the show/hide toggle's aria-label ("Show password") also contains "Password"
+  await page.getByLabel("Password", { exact: true }).fill(ADMIN_PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("navigation")).toBeVisible();
   await page.context().storageState({ path: AUTH_FILE });

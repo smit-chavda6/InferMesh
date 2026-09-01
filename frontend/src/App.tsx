@@ -25,8 +25,16 @@ export default function App() {
 
   // Still resolving the session.
   return (
-    <div className="grid h-full place-items-center">
-      <Loader2 className="size-5 animate-spin text-text-muted" />
+    <div className="flex h-full min-h-screen w-full flex-col items-center justify-center bg-bg text-text animate-in">
+      <div className="relative flex flex-col items-center gap-4">
+        <div className="relative grid size-11 place-items-center rounded-xl bg-accent text-accent-fg shadow-lg shadow-accent/20">
+          <Loader2 className="size-5 animate-spin" />
+        </div>
+        <div className="flex flex-col items-center gap-1 text-center">
+          <span className="text-sm font-semibold tracking-tight text-text">InferMesh</span>
+          <span className="text-xs text-text-muted">Connecting to gateway console…</span>
+        </div>
+      </div>
     </div>
   );
 }

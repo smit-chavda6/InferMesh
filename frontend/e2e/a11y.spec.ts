@@ -46,7 +46,8 @@ test.describe("login screen", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
   test("no critical/serious axe violations: /login", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "Sign in to InferMesh", level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Welcome back.", level: 1 })).toBeVisible();
+    await expect(page.getByLabel("Admin email")).toBeVisible();
     await assertNoBlockingViolations(page, "/login");
   });
 });

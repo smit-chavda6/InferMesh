@@ -125,10 +125,11 @@ test.describe("§31 dashboard journey", () => {
   test("sign out returns to the login screen", async ({ page }) => {
     await open(page);
     await page.getByRole("button", { name: "Sign out" }).click();
-    await expect(page.getByRole("heading", { name: "Sign in to InferMesh" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Welcome back." })).toBeVisible();
+    await expect(page.getByLabel("Admin email")).toBeVisible();
     await expect(page.getByRole("navigation")).toBeHidden();
     // the session is really gone — a reload stays on login
     await page.reload();
-    await expect(page.getByRole("heading", { name: "Sign in to InferMesh" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Welcome back." })).toBeVisible();
   });
 });

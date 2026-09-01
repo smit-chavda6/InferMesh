@@ -125,6 +125,30 @@ body {
   background-clip: content-box;
 }
 
+/* Interactive cursor pointers */
+button,
+[role="button"],
+[type="button"],
+[type="submit"],
+[type="reset"],
+a,
+select,
+summary,
+input[type="checkbox"],
+input[type="radio"],
+input[type="range"] {
+  cursor: pointer;
+}
+
+button:disabled,
+[role="button"][aria-disabled="true"],
+input:disabled,
+select:disabled,
+textarea:disabled,
+[disabled] {
+  cursor: not-allowed;
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -139,68 +163,11 @@ body {
   animation: fade-in 0.15s ease-out;
 }
 
-/* ---- Login / brand-mesh animation (InferMesh routing motif) ---------------- */
-@keyframes im-signal {
-  0% {
-    offset-distance: 0%;
-    opacity: 0;
-  }
-  8% {
-    opacity: 1;
-  }
-  92% {
-    opacity: 1;
-  }
-  100% {
-    offset-distance: 100%;
-    opacity: 0;
-  }
-}
-@keyframes im-pulse-ring {
-  0% {
-    transform: scale(0.35);
-    opacity: 0.55;
-  }
-  70% {
-    opacity: 0;
-  }
-  100% {
-    transform: scale(1.9);
-    opacity: 0;
-  }
-}
-@keyframes im-spin-slow {
-  to {
-    transform: rotate(360deg);
-  }
-}
-@keyframes im-core-glow {
-  0%,
-  100% {
-    opacity: 0.45;
-  }
-  50% {
-    opacity: 0.9;
-  }
-}
-@keyframes im-node-float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-4px);
-  }
-}
-@keyframes im-grid-pan {
-  to {
-    background-position: 36px 36px;
-  }
-}
+/* ---- Auth / subtle background styling ---------------- */
 @keyframes im-rise {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
@@ -208,20 +175,42 @@ body {
   }
 }
 
-.im-grid {
-  background-image:
-    linear-gradient(var(--border) 1px, transparent 1px),
-    linear-gradient(90deg, var(--border) 1px, transparent 1px);
-  background-size: 36px 36px;
-  animation: im-grid-pan 6s linear infinite;
-  mask-image: radial-gradient(ellipse at center, #000 5%, transparent 72%);
-  -webkit-mask-image: radial-gradient(ellipse at center, #000 5%, transparent 72%);
+@keyframes im-glow-pulse {
+  0%, 100% {
+    opacity: 0.25;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: translate(-50%, -50%) scale(1.08);
+  }
 }
-.im-signal {
-  animation: im-signal 2.8s linear infinite;
+
+@keyframes im-progress {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
 }
+
 .im-rise {
-  animation: im-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: im-rise 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.im-auth-grid {
+  background-image:
+    linear-gradient(to right, var(--border) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--border) 1px, transparent 1px);
+  background-size: 36px 36px;
+  mask-image: radial-gradient(ellipse 65% 55% at 50% 50%, #000 25%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 65% 55% at 50% 50%, #000 25%, transparent 100%);
+}
+
+.im-ambient-glow {
+  background: radial-gradient(circle, var(--accent) 0%, transparent 65%);
+  animation: im-glow-pulse 10s ease-in-out infinite;
 }
 
 /* Respect the OS "reduce motion" setting — kill transitions, animations, and

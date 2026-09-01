@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
-import { LogOut, Menu, Moon, Search, Sun } from "lucide-react";
+import { Loader2, LogOut, Menu, Moon, Search, Sun } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { CommandPalette } from "./CommandPalette";
 import { Button } from "@/components/ui/primitives";
@@ -25,8 +25,21 @@ export function AppLayout() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const isMac = typeof window !== "undefined" && /(Mac|iPhone|iPod|iPad)/i.test(navigator.userAgent);
+  const shortcutLabel = isMac ? "⌘K" : "Ctrl K";
+
   return (
-    <div className="flex h-full">
+    <div className="flex h-full relative">
+      {/* Logout transition overlay */}
+      {logout.isPending && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-bg/80 backdrop-blur-xs animate-in">
+          <div className="flex items-center gap-2.5 rounded-lg border border-border bg-panel px-4 py-2.5 shadow-lg">
+            <Loader2 className="size-4 animate-spin text-accent" />
+            <span className="text-sm font-medium text-text">Signing out…</span>
+          </div>
+        </div>
+      )}
+
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-[60] focus:rounded-md focus:bg-accent focus:px-3 focus:py-1.5 focus:text-sm focus:text-accent-fg"
@@ -65,7 +78,7 @@ export function AppLayout() {
           >
             <Search className="size-4" />
             <span className="flex-1 text-left">Search…</span>
-            <kbd className="rounded border border-border px-1.5 text-[10px] text-text-muted">⌘K</kbd>
+            <kbd className="rounded border border-border px-1.5 text-[10px] text-text-muted">{shortcutLabel}</kbd>
           </button>
 
           <div className="flex-1" />
@@ -77,10 +90,15 @@ export function AppLayout() {
             variant="ghost"
             size="icon"
             onClick={() => logout.mutate()}
+            disabled={logout.isPending}
             aria-label="Sign out"
             title="Sign out"
           >
-            <LogOut className="size-4" />
+            {logout.isPending ? (
+              <Loader2 className="size-4 animate-spin text-text-muted" />
+            ) : (
+              <LogOut className="size-4" />
+            )}
           </Button>
         </header>
 
