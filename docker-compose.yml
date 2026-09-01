@@ -1,10 +1,9 @@
-# Local stack: postgres + redis + backend gateway.
-# The frontend (frontend/) is run separately with `npm run dev` (it proxies to
-# the gateway); packaging the built SPA into this compose stack is future work.
-#
-#   cp .env.example .env && $EDITOR .env      # fill in provider keys
-#   docker compose up --build
-#   curl localhost:8000/health
+# Local stack.
+#   cp .env.example .env && $EDITOR .env          # fill in provider keys
+#   docker compose up -d postgres redis           # infra only (for host-side `uv run` / `npm run dev`)
+#   docker compose up --build                     # + the backend gateway on :8000
+#   docker compose --profile full up --build      # + the dashboard (nginx) on :8080
+#   docker compose --profile seed run --rm seed   # generate ~100k demo rows
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -40,7 +39,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     env_file:
-      - path: ./.env
+      - path: ./backend/.env
         required: false
     environment:
       # Point at the compose service names (the .env file uses localhost for
@@ -48,12 +47,28 @@ services:
       DATABASE_URL: postgresql+asyncpg://gateway:gateway@postgres:5432/gateway
       REDIS_URL: redis://redis:6379/0
       LOG_JSON: "true"
+      GIT_SHA: ${GIT_SHA:-dev}
+      BUILD_TIME: ${BUILD_TIME:-}
     ports:
       - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # The dashboard: nginx serving the built SPA + proxying /v1 /health /metrics
+  # to the backend. `docker compose --profile full up --build` → http://localhost:8080
+  frontend:
+    profiles: ["full"]
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
         condition: service_healthy
     restart: unless-stopped
 
@@ -66,7 +81,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     env_file:
-      - path: ./.env
+      - path: ./backend/.env
         required: false
     environment:
       DATABASE_URL: postgresql+asyncpg://gateway:gateway@postgres:5432/gateway

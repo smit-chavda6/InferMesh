@@ -94,14 +94,19 @@ token; the usage row is still written when the stream ends.
 ### Run the whole stack in Docker
 
 ```bash
-cp .env.example .env          # fill in provider keys
-docker compose up --build     # postgres + redis + backend
+cp .env.example backend/.env                    # fill in provider keys
+docker compose --profile full up --build        # postgres + redis + backend + dashboard
 docker compose --profile seed run --rm seed --rows 100000 --truncate
-curl localhost:8000/health/ready
 ```
 
-The backend image runs `alembic upgrade head` on start (retried until Postgres is
-up), then `uvicorn`.
+- Dashboard (nginx serving the built SPA, proxying the API): **http://localhost:8080**
+- Gateway directly: **http://localhost:8000**
+
+`docker compose up --build` (no profile) runs everything except the dashboard;
+`docker compose up -d postgres redis` is just the infra for host-side `uv run` /
+`npm run dev`. The backend image runs `alembic upgrade head` on start (retried
+until Postgres is up), then `uvicorn`. Pass `GIT_SHA` / `BUILD_TIME` as env to
+stamp `GET /v1/version`.
 
 ---
 

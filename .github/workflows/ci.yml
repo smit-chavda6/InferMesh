@@ -186,4 +186,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build backend image
-        run: docker build -t llm-gateway-backend:ci ./backend
+        run: docker build -t infermesh-backend:ci ./backend
+      - name: Build frontend image
+        run: docker build -t infermesh-frontend:ci ./frontend
+      - name: Compose config is valid
+        run: docker compose --profile full --profile seed config >/dev/null
