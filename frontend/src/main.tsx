@@ -12,7 +12,9 @@ import "./index.css";
 // there's no light-mode flash. AppLayout's useTheme still owns the toggle.
 try {
   const saved = localStorage.getItem("gw-theme");
-  const dark = saved ? saved === "dark" : !window.matchMedia?.("(prefers-color-scheme: light)").matches;
+  const dark =
+    saved === "dark" ||
+    (saved !== "light" && (window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? true));
   document.documentElement.classList.toggle("dark", dark);
   document.documentElement.style.colorScheme = dark ? "dark" : "light";
 } catch {
