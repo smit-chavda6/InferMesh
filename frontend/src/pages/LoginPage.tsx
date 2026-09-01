@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ArrowRight, Boxes, Eye, EyeOff, Lock, Mail, Moon, Sun } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Lock, Mail, Moon, Sun } from "lucide-react";
+import { Logo } from "@/components/Logo";
 import { useLogin } from "@/api/queries";
 import { ApiError } from "@/api/client";
 import { useTheme } from "@/hooks/useTheme";
@@ -32,7 +33,7 @@ export function LoginPage() {
         {/* Brand */}
         <div className="flex items-center gap-2.5">
           <div className="grid size-7 place-items-center rounded-md bg-accent text-accent-fg shadow-sm">
-            <Boxes className="size-4" />
+            <Logo className="size-5" />
           </div>
           <span className="text-sm font-semibold tracking-tight text-text">InferMesh</span>
         </div>

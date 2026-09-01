@@ -12,6 +12,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { StatusDot } from "@/components/StatusDot";
+import { Logo } from "@/components/Logo";
 import { useAlerts, useSystemHealth } from "@/api/queries";
 import { cn } from "@/lib/utils";
 
@@ -38,7 +39,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
     <div className="flex h-full flex-col">
       <div className="flex h-14 items-center gap-2 px-4">
         <div className="grid size-7 place-items-center rounded-md bg-accent text-accent-fg">
-          <Boxes className="size-4" />
+          <Logo className="size-5" />
         </div>
         <span className="text-sm font-semibold tracking-tight">InferMesh</span>
       </div>
