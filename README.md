@@ -83,7 +83,17 @@ each provider only when its credentials are present.
 
 ## Run it
 
-### 1. Infrastructure
+### Windows: just double-click
+
+| File | What it does |
+|------|--------------|
+| **`run.bat`** | starts Docker if needed, brings up Postgres/Redis, `uv sync` + migrations, seeds ~100k demo rows on first run, then opens the gateway + dashboard (dev servers, HMR) and your browser at **http://127.0.0.1:5173** |
+| **`run-docker.bat`** | builds and runs the whole thing in containers (`--profile full`), dashboard at **http://localhost:8080** — nothing needed on the host but Docker |
+| **`stop.bat`** | closes the dev server windows and stops the containers (data is kept) |
+
+Both need `backend/.env` to exist (`copy .env.example backend\.env`, then add your keys).
+
+### Manual — 1. Infrastructure
 
 ```bash
 docker compose up -d postgres redis
