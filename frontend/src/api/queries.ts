@@ -45,7 +45,14 @@ export function useLogout() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => apiFetch<{ ok: boolean }>("/v1/auth/logout", { method: "POST" }),
-    onSuccess: () => qc.clear(),
+    onSuccess: () => {
+      qc.clear();
+      // Full reload to the root: the app re-boots into the logged-out state
+      // (App → useAuthMe 401 → LoginPage) and no dashboard data lingers in
+      // memory. A bare qc.clear() leaves the mounted useAuthMe observer holding
+      // its stale user object, so the gate never flips to the login screen.
+      window.location.assign("/");
+    },
   });
 }
 

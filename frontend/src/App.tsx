@@ -13,24 +13,25 @@ import { AlertsPage } from "@/pages/AlertsPage";
 import { LiveActivityPage } from "@/pages/LiveActivityPage";
 import { SystemHealthPage } from "@/pages/SystemHealthPage";
 import { useAuthMe } from "@/api/queries";
-import { ApiError } from "@/api/client";
 
 export default function App() {
   const me = useAuthMe();
 
-  if (me.isLoading) {
-    return (
-      <div className="grid h-full place-items-center">
-        <Loader2 className="size-5 animate-spin text-text-muted" />
-      </div>
-    );
-  }
+  // Authenticated — a confirmed session. Show the dashboard.
+  if (me.data) return <AppRoutes />;
 
-  const unauthorized = me.error instanceof ApiError && me.error.status === 401;
-  if (unauthorized || (!me.data && me.isError)) {
-    return <LoginPage />;
-  }
+  // The session check failed (a 401, or any error with no cached user) — sign in.
+  if (me.isError) return <LoginPage />;
 
+  // Still resolving the session.
+  return (
+    <div className="grid h-full place-items-center">
+      <Loader2 className="size-5 animate-spin text-text-muted" />
+    </div>
+  );
+}
+
+function AppRoutes() {
   return (
     <Routes>
       <Route element={<AppLayout />}>
