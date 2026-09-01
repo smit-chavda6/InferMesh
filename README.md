@@ -33,27 +33,44 @@ from [`CLAUDE.md`](./CLAUDE.md).
 ## Architecture
 
 ```mermaid
-flowchart LR
-  client["Client / SDK"] -->|"POST /v1/chat/completions"| gw
-  browser["Dashboard (SPA)"] -->|"admin session · /v1/*"| gw
+flowchart TD
+    Client["Client / SDK"] -->|"POST /v1/chat/completions"| MW
+    Browser["Dashboard (SPA)"] -->|"admin session, /v1/*"| MW
 
-  subgraph gw["Gateway (FastAPI)"]
-    direction TB
-    mw["request-id · auth · rate limit"] --> cache["cache lookup<br/>(exact + pgvector semantic)"]
-    cache -->|miss| router["Router<br/>retry · backoff · fallback · circuit breaker"]
-    router --> adapters["provider adapters"]
-    router --> rec["UsageRecorder → requests row + /metrics"]
-  end
+    subgraph Gateway["Gateway (FastAPI)"]
+        MW["request id, auth, rate limit"] --> Cache["cache lookup (exact + pgvector semantic)"]
+        Cache -->|"miss"| Router["Router: retry, backoff, fallback, circuit breaker"]
+        Router --> Adapters["provider adapters"]
+        Router --> Rec["UsageRecorder"]
+    end
 
-  adapters --> openai["OpenAI / Azure OpenAI"]
-  adapters --> anthropic["Anthropic"]
-  adapters --> gemini["Gemini"]
-  adapters --> foundry["Azure AI Foundry"]
+    Adapters --> OpenAI["OpenAI / Azure OpenAI"]
+    Adapters --> Anthropic["Anthropic"]
+    Adapters --> Gemini["Gemini"]
+    Adapters --> Foundry["Azure AI Foundry"]
 
-  gw --- pg[("PostgreSQL<br/>+ pgvector")]
-  gw --- redis[("Redis<br/>cache · rate limit · JWT denylist")]
-  gw --> prom{{"Prometheus /metrics"}}
+    Rec --> PG[("PostgreSQL + pgvector")]
+    MW --> Redis[("Redis: cache, rate limit, JWT denylist")]
+    Rec --> Prom["Prometheus /metrics"]
 ```
+
+<details>
+<summary>Diagram not rendering? Text version</summary>
+
+- **Client / SDK** and the **Dashboard (SPA)** both call into the **Gateway
+  (FastAPI)**: `POST /v1/chat/completions` from clients, admin-session `/v1/*`
+  calls from the dashboard.
+- Inside the gateway: request id / auth / rate limit → cache lookup (exact +
+  pgvector semantic) → on a miss, the **Router** (retry, backoff, fallback,
+  circuit breaker) → provider adapters, and every call also goes through
+  **UsageRecorder**.
+- Provider adapters fan out to **OpenAI / Azure OpenAI**, **Anthropic**,
+  **Gemini**, and **Azure AI Foundry**.
+- **UsageRecorder** writes to **PostgreSQL + pgvector** and exposes
+  **Prometheus `/metrics`**; the gateway also talks to **Redis** for caching,
+  rate limiting, and the JWT denylist.
+
+</details>
 
 ## Repo layout
 
