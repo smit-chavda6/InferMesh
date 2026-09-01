@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
+from app import metrics
 from app.db.models import RequestLog
 from app.db.session import Database
 from app.logging_config import get_logger
@@ -66,12 +67,25 @@ class RequestOutcome:
 
 
 class UsageRecorder:
-    def __init__(self, db: Database, pricing: PricingTable, *, enabled: bool = True) -> None:
+    def __init__(
+        self,
+        db: Database,
+        pricing: PricingTable,
+        *,
+        enabled: bool = True,
+        metrics_enabled: bool = True,
+    ) -> None:
         self._db = db
         self._pricing = pricing
         self._enabled = enabled
+        self._metrics_enabled = metrics_enabled
 
     async def record(self, outcome: RequestOutcome) -> None:
+        if self._metrics_enabled:
+            try:
+                metrics.observe_request(outcome)
+            except Exception as exc:  # noqa: BLE001 — metrics must never break a request
+                log.warning("metrics.observe_failed", error=str(exc))
         if not self._enabled:
             return
         try:

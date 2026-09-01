@@ -12,14 +12,22 @@ traffic. The rich per-dependency surface for the dashboard is `/v1/system/health
 
 from __future__ import annotations
 
+import datetime as dt
+import os
 import time
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
 from app import __version__
+from app import metrics as _metrics
 
 router = APIRouter(tags=["system"])
+
+# Baked at image build time (see docker/frontend.Dockerfile / backend Dockerfile).
+_GIT_SHA = os.getenv("GIT_SHA", "dev")
+_BUILD_TIME = os.getenv("BUILD_TIME") or None
+_STARTED_AT = dt.datetime.now(dt.UTC)
 
 
 @router.get("/health")
@@ -55,3 +63,30 @@ async def readiness(request: Request) -> JSONResponse:
         status_code=200 if ready else 503,
         content={"status": "ready" if ready else "not_ready", "checks": checks},
     )
+
+
+@router.get("/v1/version")
+async def version() -> dict[str, object]:
+    """Build provenance — useful to confirm what's actually deployed."""
+    return {
+        "version": __version__,
+        "git_sha": _GIT_SHA,
+        "build_time": _BUILD_TIME,
+        "started_at": _STARTED_AT.isoformat(),
+    }
+
+
+@router.get("/metrics")
+async def prometheus_metrics(request: Request) -> Response:
+    """Prometheus exposition. Open by default; set METRICS_TOKEN to require
+    ``Authorization: Bearer <token>``."""
+    settings = request.app.state.settings
+    if not settings.metrics_enabled:
+        raise HTTPException(status_code=404, detail="metrics disabled")
+    token = settings.metrics_token
+    if token:
+        auth = request.headers.get("authorization", "")
+        if auth != f"Bearer {token}":
+            raise HTTPException(status_code=401, detail="metrics token required")
+    body, content_type = _metrics.render()
+    return Response(content=body, media_type=content_type)

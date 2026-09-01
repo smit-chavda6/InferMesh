@@ -43,7 +43,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.db = Database(settings)
         app.state.pricing = get_pricing_table()
         app.state.recorder = UsageRecorder(
-            app.state.db, app.state.pricing, enabled=settings.usage_logging_enabled
+            app.state.db,
+            app.state.pricing,
+            enabled=settings.usage_logging_enabled,
+            metrics_enabled=settings.metrics_enabled,
         )
         app.state.redis = RedisClient(settings)
         app.state.rate_limiter = RateLimiter(

@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     # gateway working with no database (row-writing is best-effort regardless).
     usage_logging_enabled: bool = True
 
+    # --- Metrics ------------------------------------------------------------
+    # Prometheus exposition at GET /metrics. If METRICS_TOKEN is set, the
+    # endpoint requires `Authorization: Bearer <token>`.
+    metrics_enabled: bool = True
+    metrics_token: str | None = None
+
     # --- Redis ---------------------------------------------------------
     redis_url: str = "redis://localhost:6379/0"
 
