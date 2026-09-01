@@ -130,6 +130,28 @@ async def test_requests_explorer_pagination_and_filter(
     assert lats == sorted(lats)
 
 
+async def test_requests_csv_export(
+    admin_client: AsyncClient, client: AsyncClient, db_session: AsyncSession
+) -> None:
+    await seed_requests(db_session, n=40)
+
+    assert (await client.get("/v1/requests/export.csv")).status_code == 401  # admin only
+
+    resp = await admin_client.get("/v1/requests/export.csv?range=7d&status=error")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/csv")
+    assert "attachment; filename=" in resp.headers["content-disposition"]
+
+    lines = resp.text.strip().splitlines()
+    header = lines[0].split(",")
+    assert header[:4] == ["request_id", "created_at", "provider", "model"]
+    body = lines[1:]
+    assert len(body) > 0
+    # the status=error filter carried through
+    status_idx = header.index("status")
+    assert all(row.split(",")[status_idx] == "error" for row in body)
+
+
 async def test_providers_and_health(admin_client: AsyncClient, db_session: AsyncSession) -> None:
     await seed_requests(db_session, n=60)
 

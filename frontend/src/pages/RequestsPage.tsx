@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Download } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { RangePicker } from "@/components/RangePicker";
 import { Button, Input } from "@/components/ui/primitives";
@@ -8,6 +8,7 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { CacheBadge, StatusBadge } from "@/components/badges";
 import { EmptyState, ErrorState, LoadingRows } from "@/components/States";
 import { RequestDrawer } from "@/components/RequestDrawer";
+import { qs } from "@/api/client";
 import { useRequests } from "@/api/queries";
 import { useRange } from "@/hooks/useRange";
 import { cn, fmtDateTime, fmtInt, fmtMs, fmtUsd, PROVIDERS, providerLabel } from "@/lib/utils";
@@ -97,6 +98,19 @@ export function RequestsPage() {
 
   const hasFilters = !!(provider || status || fallbackOnly || cacheHitOnly || search);
 
+  const exportUrl =
+    "/v1/requests/export.csv" +
+    qs({
+      range,
+      sort,
+      direction,
+      provider,
+      status,
+      fallback_only: fallbackOnly || undefined,
+      cache_hit_only: cacheHitOnly || undefined,
+      search: search || undefined,
+    });
+
   return (
     <div>
       <PageHeader
@@ -160,9 +174,16 @@ export function RequestsPage() {
             Reset
           </Button>
         )}
-        <span className="ml-auto text-xs text-text-muted">
-          {q.data ? `${fmtInt(q.data.total)} results` : ""}
-        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-xs text-text-muted">
+            {q.data ? `${fmtInt(q.data.total)} results` : ""}
+          </span>
+          <Button asChild size="sm" variant="outline" className="h-8" title="Export the filtered rows as CSV">
+            <a href={exportUrl} download>
+              <Download className="size-3.5" /> CSV
+            </a>
+          </Button>
+        </div>
       </div>
 
       {q.isLoading ? (

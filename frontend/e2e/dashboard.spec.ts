@@ -40,6 +40,14 @@ test.describe("§31 dashboard journey", () => {
     await expect(page).toHaveURL(/search=req_/, { timeout: 5000 });
   });
 
+  test("requests explorer: CSV export downloads the filtered rows", async ({ page }) => {
+    await open(page, "/requests?status=error");
+    const download = page.waitForEvent("download");
+    await page.getByRole("link", { name: "CSV" }).click();
+    const file = await download;
+    expect(file.suggestedFilename()).toMatch(/^requests-.*\.csv$/);
+  });
+
   test("cost analytics: breakdown tabs re-query", async ({ page }) => {
     await open(page);
     await page.getByRole("link", { name: "Costs" }).click();
