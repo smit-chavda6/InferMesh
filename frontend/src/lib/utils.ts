@@ -34,8 +34,15 @@ export function fmtMoney(
 ): string {
   if (n == null) return "—";
   const { symbol, locale } = CURRENCY_META[currency];
-  const max = opts?.precise || Math.abs(n) < 1 ? 6 : 2;
+  const max = opts?.precise ? 6 : Math.abs(n) < 1 ? 4 : 2;
   return symbol + n.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: max });
+}
+
+/** Compact money for chart axes: 0–2 fraction digits, no forced trailing zeros. */
+export function fmtMoneyAxis(n: number | null | undefined, currency: Currency = "USD"): string {
+  if (n == null) return "—";
+  const { symbol, locale } = CURRENCY_META[currency];
+  return symbol + n.toLocaleString(locale, { maximumFractionDigits: 2 });
 }
 
 export function fmtUsd(n: number | null | undefined, opts?: { precise?: boolean }): string {

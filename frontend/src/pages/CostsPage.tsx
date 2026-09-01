@@ -14,7 +14,8 @@ import { TrendLine } from "@/components/charts";
 import { EmptyState, ErrorState, LoadingBlock, LoadingCards } from "@/components/States";
 import { useCostBreakdown, useFx, useUsageSummary, useUsageTimeseries } from "@/api/queries";
 import { useRange } from "@/hooks/useRange";
-import { fmtInt, fmtMoney, type Currency } from "@/lib/utils";
+import type { TimeseriesPoint } from "@/api/types";
+import { fmtInt, fmtMoney, fmtMoneyAxis, type Currency } from "@/lib/utils";
 
 const RANGE_DAYS: Record<string, number> = { "1h": 1 / 24, "24h": 1, "7d": 7, "30d": 30 };
 const CURRENCY_KEY = "gw-currency";
@@ -26,6 +27,25 @@ function storedCurrency(): Currency {
   } catch {
     return "USD";
   }
+}
+
+/** Drop trailing buckets with zero requests — the newest bucket is usually
+ *  still in progress, which otherwise reads as the line crashing to $0. A
+ *  genuinely quiet stretch *followed by* more traffic is left alone. */
+function dropTrailingIdleBuckets(series: TimeseriesPoint[]): TimeseriesPoint[] {
+  let end = series.length;
+  while (end > 0 && series[end - 1].total === 0) end--;
+  return series.slice(0, end);
+}
+
+/** X-axis tick formatter matched to the series' bucket width: sub-daily
+ *  buckets ("1 minute" / "1 hour") need a time-of-day, not just the date. */
+function xAxisFmt(bucket: string | undefined) {
+  const opts: Intl.DateTimeFormatOptions =
+    bucket === "1 day"
+      ? { month: "short", day: "numeric" }
+      : { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false };
+  return (v: string | number) => new Date(v).toLocaleString("en-US", opts);
 }
 
 export function CostsPage() {
@@ -40,6 +60,7 @@ export function CostsPage() {
   const rate = currency === "INR" ? (fx.data?.rates.INR ?? INR_FALLBACK) : 1;
   const money = (n: number | null | undefined, opts?: { precise?: boolean }) =>
     fmtMoney(n == null ? n : n * rate, currency, opts);
+  const chartSeries = series.data ? dropTrailingIdleBuckets(series.data.series) : [];
 
   const pickCurrency = (c: Currency) => {
     setCurrency(c);
@@ -119,13 +140,15 @@ export function CostsPage() {
             <LoadingBlock />
           ) : series.isError ? (
             <ErrorState error={series.error} onRetry={() => series.refetch()} />
-          ) : !series.data?.series.length ? (
+          ) : !chartSeries.length ? (
             <EmptyState title="No cost data in this range" />
           ) : (
             <TrendLine
-              data={series.data.series}
+              data={chartSeries}
               dataKey="cost_usd"
               valueFmt={(v) => money(v, { precise: true })}
+              axisValueFmt={(v) => fmtMoneyAxis(v * rate, currency)}
+              xFmt={xAxisFmt(series.data?.range.bucket)}
             />
           )}
         </CardContent>

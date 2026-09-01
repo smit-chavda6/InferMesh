@@ -115,34 +115,42 @@ export function RequestVolumeChart({ data, height = 280 }: { data: VolumePoint[]
   );
 }
 
+const defaultXFmt = (v: string | number) =>
+  new Date(v).toLocaleString("en-US", { month: "short", day: "numeric" });
+
 export function TrendLine({
   data,
   dataKey,
   kind = "number",
   valueFmt,
+  axisValueFmt,
+  xFmt,
   height = 240,
 }: {
   data: readonly ChartRow[];
   dataKey: string;
   kind?: "number" | "usd" | "ms";
-  /** overrides `kind` — e.g. currency-converted money */
+  /** tooltip value — overrides `kind`, e.g. currency-converted money */
   valueFmt?: (v: number) => string;
+  /** Y-axis tick value — defaults to `valueFmt`. Pass a shorter formatter (e.g.
+   *  `fmtMoneyAxis`) when the tooltip formatter carries more decimal places
+   *  than a tick label should. */
+  axisValueFmt?: (v: number) => string;
+  /** X-axis tick label — defaults to a date-only formatter; pass one that
+   *  includes the time for sub-daily buckets. */
+  xFmt?: (v: string | number) => string;
   height?: number;
 }) {
   const vfmt =
     valueFmt ??
     ((v: number) => (kind === "usd" ? fmtUsd(v, { precise: true }) : kind === "ms" ? fmtMs(v) : fmtCompact(v)));
+  const tickFmt = axisValueFmt ?? vfmt;
   return (
     <ResponsiveContainer width="100%" height={height}>
       <LineChart data={data} margin={{ top: 6, right: 8, left: -6, bottom: 0 }}>
         <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
-        <XAxis
-          dataKey="ts"
-          {...axis}
-          minTickGap={40}
-          tickFormatter={(v) => new Date(v).toLocaleString("en-US", { month: "short", day: "numeric" })}
-        />
-        <YAxis {...axis} width={54} tickFormatter={vfmt} />
+        <XAxis dataKey="ts" {...axis} minTickGap={64} tickFormatter={xFmt ?? defaultXFmt} />
+        <YAxis {...axis} width={54} tickFormatter={tickFmt} />
         <Tooltip content={<TooltipBox labelFmt={(v) => fmtDateTime(String(v))} valueFmt={vfmt} />} />
         <Line type="monotone" dataKey={dataKey} stroke="var(--chart-1)" strokeWidth={2} dot={false} isAnimationActive={false} />
       </LineChart>

@@ -5,6 +5,7 @@ import {
   fmtCompact,
   fmtInt,
   fmtMoney,
+  fmtMoneyAxis,
   fmtMs,
   fmtPct,
   fmtUsd,
@@ -46,6 +47,18 @@ describe("number formatters", () => {
     expect(fmtMoney(1234567.5, "INR")).toBe("₹12,34,567.50"); // lakh grouping
     expect(fmtMoney(0.0525, "INR", { precise: true })).toMatch(/^₹0\.052/);
     expect(fmtMoney(null, "INR")).toBe("—");
+  });
+
+  it("fmtMoney caps sub-1 values at 4 decimals unless precise", () => {
+    expect(fmtMoney(0.052534, "INR")).toBe("₹0.0525");
+    expect(fmtMoney(0.052534, "INR", { precise: true })).toBe("₹0.052534");
+  });
+
+  it("fmtMoneyAxis is a short, chart-friendly tick label", () => {
+    expect(fmtMoneyAxis(20.889, "INR")).toBe("₹20.89");
+    expect(fmtMoneyAxis(0, "INR")).toBe("₹0");
+    expect(fmtMoneyAxis(15.6675, "USD")).toBe("$15.67");
+    expect(fmtMoneyAxis(null)).toBe("—");
   });
 
   it("fmtMs crosses into seconds at 1000", () => {
