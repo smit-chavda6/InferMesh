@@ -54,6 +54,13 @@ class Settings(BaseSettings):
     metrics_enabled: bool = True
     metrics_token: str | None = None
 
+    # --- FX (dashboard currency switch, display-only) --------------------
+    # The dashboard can show costs in INR alongside USD. Rate is fetched once
+    # from Frankfurter (ECB) and cached in Redis for a day; on failure this
+    # constant is used.
+    fx_enabled: bool = True
+    fx_usd_inr_fallback: float = Field(default=87.5, gt=0)
+
     # --- Redis ---------------------------------------------------------
     redis_url: str = "redis://localhost:6379/0"
 

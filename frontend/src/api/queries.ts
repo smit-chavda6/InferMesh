@@ -6,6 +6,7 @@ import type {
   CacheStats,
   CostBreakdownResponse,
   CreatedProject,
+  FxResponse,
   ProjectRow,
   ProvidersResponse,
   ProviderHealthRow,
@@ -119,6 +120,16 @@ export function useCostBreakdown(range: RangeKey, groupBy: "model" | "provider" 
     queryKey: ["usage", "cost-breakdown", range, groupBy],
     queryFn: () =>
       apiFetch<CostBreakdownResponse>(`/v1/usage/cost-breakdown?${R(range)}&group_by=${groupBy}`),
+  });
+}
+
+/** USD reference rates for the display-only currency switch (refetched rarely). */
+export function useFx() {
+  return useQuery({
+    queryKey: ["fx"],
+    queryFn: () => apiFetch<FxResponse>("/v1/fx"),
+    staleTime: 6 * 60 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
   });
 }
 

@@ -119,14 +119,19 @@ export function TrendLine({
   data,
   dataKey,
   kind = "number",
+  valueFmt,
   height = 240,
 }: {
   data: readonly ChartRow[];
   dataKey: string;
   kind?: "number" | "usd" | "ms";
+  /** overrides `kind` — e.g. currency-converted money */
+  valueFmt?: (v: number) => string;
   height?: number;
 }) {
-  const vfmt = (v: number) => (kind === "usd" ? fmtUsd(v, { precise: true }) : kind === "ms" ? fmtMs(v) : fmtCompact(v));
+  const vfmt =
+    valueFmt ??
+    ((v: number) => (kind === "usd" ? fmtUsd(v, { precise: true }) : kind === "ms" ? fmtMs(v) : fmtCompact(v)));
   return (
     <ResponsiveContainer width="100%" height={height}>
       <LineChart data={data} margin={{ top: 6, right: 8, left: -6, bottom: 0 }}>

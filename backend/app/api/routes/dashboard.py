@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import fx
 from app.auth import require_admin
 from app.config import ALL_PROVIDERS
 from app.dashboard import queries as q
@@ -88,6 +89,18 @@ async def usage_timeseries(
     return {
         "range": {"key": tr.key, "start": tr.start, "end": tr.end, "bucket": tr.bucket},
         "series": await q.usage_timeseries(session, tr),
+    }
+
+
+@router.get("/fx")
+async def fx_rates(request: Request) -> dict[str, Any]:
+    """USD reference rates for the dashboard's display-only currency switch."""
+    inr = await fx.usd_inr(request.app.state.redis.client, request.app.state.settings)
+    return {
+        "base": "USD",
+        "rates": {"USD": 1.0, "INR": inr["rate"]},
+        "source": inr["source"],
+        "as_of": inr["as_of"],
     }
 
 

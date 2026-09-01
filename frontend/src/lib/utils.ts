@@ -19,12 +19,27 @@ export function fmtCompact(n: number | null | undefined): string {
   return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n);
 }
 
-export function fmtUsd(n: number | null | undefined, opts?: { precise?: boolean }): string {
+export type Currency = "USD" | "INR";
+const CURRENCY_META: Record<Currency, { symbol: string; locale: string }> = {
+  USD: { symbol: "$", locale: "en-US" },
+  INR: { symbol: "₹", locale: "en-IN" },
+};
+
+/** Format an amount already expressed in `currency`. `precise` widens the
+ *  fraction digits for sub-unit values (per-request costs). */
+export function fmtMoney(
+  n: number | null | undefined,
+  currency: Currency = "USD",
+  opts?: { precise?: boolean },
+): string {
   if (n == null) return "—";
-  if (opts?.precise || Math.abs(n) < 1) {
-    return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 6 });
-  }
-  return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const { symbol, locale } = CURRENCY_META[currency];
+  const max = opts?.precise || Math.abs(n) < 1 ? 6 : 2;
+  return symbol + n.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: max });
+}
+
+export function fmtUsd(n: number | null | undefined, opts?: { precise?: boolean }): string {
+  return fmtMoney(n, "USD", opts);
 }
 
 export function fmtMs(n: number | null | undefined): string {

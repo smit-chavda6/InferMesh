@@ -4,6 +4,7 @@ import {
   fmtChangePct,
   fmtCompact,
   fmtInt,
+  fmtMoney,
   fmtMs,
   fmtPct,
   fmtUsd,
@@ -37,6 +38,14 @@ describe("number formatters", () => {
     expect(fmtUsd(0.0004)).toMatch(/^\$0\.0004/);
     expect(fmtUsd(1.23, { precise: true })).toBe("$1.23");
     expect(fmtUsd(null)).toBe("—");
+  });
+
+  it("fmtMoney formats USD and INR (₹, Indian grouping)", () => {
+    expect(fmtMoney(12.5, "USD")).toBe("$12.50");
+    expect(fmtMoney(1093.75, "INR")).toBe("₹1,093.75");
+    expect(fmtMoney(1234567.5, "INR")).toBe("₹12,34,567.50"); // lakh grouping
+    expect(fmtMoney(0.0525, "INR", { precise: true })).toMatch(/^₹0\.052/);
+    expect(fmtMoney(null, "INR")).toBe("—");
   });
 
   it("fmtMs crosses into seconds at 1000", () => {

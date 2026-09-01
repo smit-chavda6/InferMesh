@@ -218,6 +218,13 @@ export interface AlertsResponse {
   alerts: AlertRow[];
 }
 
+export interface FxResponse {
+  base: "USD";
+  rates: Record<string, number>; // e.g. { USD: 1, INR: 87.4 }
+  source: "frankfurter" | "fallback" | string;
+  as_of: string | null;
+}
+
 export interface SystemHealth {
   gateway: { status: string };
   dependencies: Record<

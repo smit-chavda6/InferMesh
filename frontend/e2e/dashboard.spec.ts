@@ -60,6 +60,22 @@ test.describe("§31 dashboard journey", () => {
     await expect(page.getByRole("columnheader", { name: "Project" })).toBeVisible();
   });
 
+  test("cost analytics: currency switch reformats totals into INR", async ({ page }) => {
+    await open(page);
+    await page.getByRole("link", { name: "Costs" }).click();
+    await expect(page.getByText("Total cost")).toBeVisible();
+    await expect(page.getByText(/^\$/).first()).toBeVisible();
+
+    await page.getByRole("button", { name: "INR", exact: true }).click();
+    await expect(page.getByText(/^₹/).first()).toBeVisible();
+    await expect(page.getByText(/1\s*USD\s*≈\s*₹/)).toBeVisible();
+
+    // choice persists across a reload
+    await page.reload();
+    await expect(page.getByText(/^₹/).first()).toBeVisible();
+    await page.getByRole("button", { name: "USD", exact: true }).click();
+  });
+
   test("range picker rewrites ?range", async ({ page }) => {
     await open(page);
     await page.getByRole("button", { name: "7d", exact: true }).click();

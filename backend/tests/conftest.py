@@ -67,6 +67,7 @@ def make_settings(**overrides: object) -> Settings:
         # Phase 6 features are opt-in per test (they add Redis state to manage).
         "rate_limit_enabled": False,
         "cache_enabled": False,
+        "fx_enabled": False,  # no outbound FX fetch in the offline suite
         # Phase 8 admin auth
         "jwt_secret": "test-jwt-secret-that-is-at-least-32-chars-long",
         "admin_email": ADMIN_EMAIL,
