@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { RangePicker } from "@/components/RangePicker";
 import { BarByGroup, DonutByGroup } from "@/components/charts";
 import { StatusDot } from "@/components/StatusDot";
+import { CircuitBadge } from "@/components/badges";
 import { EmptyState, ErrorState, LoadingBlock, LoadingCards } from "@/components/States";
 import { useProviderHealth, useProviders } from "@/api/queries";
 import { useRange } from "@/hooks/useRange";
@@ -99,14 +100,15 @@ export function ProvidersPage() {
                       <StatusDot status={h?.status ?? (p.enabled ? "unknown" : "disabled")} />
                       {providerLabel(p.provider)}
                     </CardTitle>
-                    <span
-                      className={cn(
-                        "text-xs",
-                        p.enabled ? "text-ok" : "text-text-faint",
-                      )}
-                    >
-                      {p.enabled ? "Enabled" : "Disabled"}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <CircuitBadge
+                        state={p.circuit_state}
+                        retryIn={p.circuit_retry_in_seconds}
+                      />
+                      <span className={cn("text-xs", p.enabled ? "text-ok" : "text-text-faint")}>
+                        {p.enabled ? "Enabled" : "Disabled"}
+                      </span>
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-2 text-sm">
                     <Row label="Priority">

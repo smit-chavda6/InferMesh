@@ -19,6 +19,7 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 
+from app.circuit_breaker import CircuitBreaker
 from app.config import Settings
 from app.errors import (
     AllProvidersFailedError,
@@ -99,10 +100,17 @@ class Router:
         registry: ProviderRegistry,
         settings: Settings,
         sleep: SleepFn = asyncio.sleep,
+        breaker: CircuitBreaker | None = None,
     ) -> None:
         self._registry = registry
         self._settings = settings
         self._sleep = sleep
+        self._breaker = breaker if settings.circuit_breaker_enabled else None
+
+    def _skipped_attempt(self, provider: str) -> ProviderAttempt:
+        return ProviderAttempt(
+            provider=provider, model=f"{provider}:default", outcome="circuit_open"
+        )
 
     # -- chain construction ------------------------------------------------
 
@@ -212,9 +220,15 @@ class Router:
 
         attempts: list[ProviderAttempt] = []
         for idx, provider in enumerate(chain):
+            if self._breaker and not self._breaker.allow(provider):
+                log.warning("router.circuit_open_skip", provider=provider)
+                attempts.append(self._skipped_attempt(provider))
+                continue
             completion, attempt = await self._try_provider(provider, request, is_fallback=idx > 0)
             attempts.append(attempt)
             if completion is not None:
+                if self._breaker:
+                    self._breaker.record_success(provider)
                 if len(attempts) > 1 or attempt.retries:
                     log.info(
                         "router.recovered",
@@ -228,6 +242,8 @@ class Router:
                     model_used=attempt.model,
                     attempts=attempts,
                 )
+            if self._breaker:
+                self._breaker.record_failure(provider)
             log.warning("router.provider_exhausted", provider=provider, outcome=attempt.outcome)
 
         summary = ", ".join(f"{a.provider}:{a.outcome}" for a in attempts)
@@ -248,6 +264,10 @@ class Router:
         max_attempts = self._settings.retry_max_attempts
 
         for idx, provider in enumerate(chain):
+            if self._breaker and not self._breaker.allow(provider):
+                log.warning("router.stream_circuit_open_skip", provider=provider)
+                attempts.append(self._skipped_attempt(provider))
+                continue
             adapter = self._registry.get(provider)
             req = self._request_for(provider, request, is_fallback=idx > 0)
             model = req.model or f"{provider}:default"
@@ -280,6 +300,8 @@ class Router:
                     attempt.outcome = "success"
                     attempt.latency_ms = round((time.perf_counter() - started) * 1000, 2)
                     attempts.append(attempt)
+                    if self._breaker:
+                        self._breaker.record_success(provider)
                     yield StreamOutcome(
                         completion_id=response_id or f"gen_{uuid.uuid4().hex}",
                         created=created or int(time.time()),
@@ -334,6 +356,10 @@ class Router:
                         break
                     await self._sleep(self._backoff_delay(i))
 
+            # reached only when every attempt failed before the first token
+            # (a mid-stream failure returns earlier)
+            if self._breaker:
+                self._breaker.record_failure(provider)
             log.warning("router.stream_provider_exhausted", provider=provider)
 
         summary = ", ".join(f"{a.provider}:{a.outcome}" for a in attempts)

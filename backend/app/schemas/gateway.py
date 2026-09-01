@@ -12,7 +12,9 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 CacheStatus = Literal["HIT", "MISS", "DISABLED"]
-AttemptOutcome = Literal["success", "timeout", "error", "rate_limited", "bad_request"]
+AttemptOutcome = Literal[
+    "success", "timeout", "error", "rate_limited", "bad_request", "circuit_open"
+]
 
 
 class CacheInfo(BaseModel):

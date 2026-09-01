@@ -104,6 +104,8 @@ async def providers(
     tr = _range(range, None, None)
     rollup = {r["provider"]: r for r in await q.provider_rollup(session, tr)}
     chain = settings.fallback_chain
+    breaker = getattr(request.app.state, "circuit_breaker", None)
+    cb = breaker.snapshot() if breaker else {}
 
     items = []
     for name in ALL_PROVIDERS:
@@ -114,6 +116,8 @@ async def providers(
                 "enabled": settings.provider_enabled(name),
                 "is_primary": name == settings.default_provider,
                 "fallback_priority": chain.index(name) + 1 if name in chain else None,
+                "circuit_state": cb.get(name, {}).get("state", "closed"),
+                "circuit_retry_in_seconds": cb.get(name, {}).get("retry_in_seconds", 0.0),
                 "requests": stats.get("requests", 0),
                 "error_rate": stats.get("error_rate", 0.0),
                 "fallback_count": stats.get("fallback_count", 0),
@@ -256,15 +260,23 @@ async def system_health(request: Request, session: SessionDep) -> dict[str, Any]
         }
 
     ph = {p["provider"]: p for p in await q.provider_health(session, window_minutes=5)}
+    breaker = getattr(app.state, "circuit_breaker", None)
+    cb = breaker.snapshot() if breaker else {}
     for name in ALL_PROVIDERS:
+        circuit = cb.get(name, {}).get("state", "closed")
         if not app.state.settings.provider_enabled(name):
-            deps[name] = {"status": "disabled", "checked_at": dt.datetime.now(dt.UTC)}
+            deps[name] = {
+                "status": "disabled",
+                "circuit_state": circuit,
+                "checked_at": dt.datetime.now(dt.UTC),
+            }
         else:
             h = ph.get(name)
             deps[name] = {
                 "status": h["status"] if h else "unknown",
                 "success_rate": h["success_rate"] if h else None,
                 "avg_latency_ms": h["avg_latency_ms"] if h else None,
+                "circuit_state": circuit,
                 "checked_at": dt.datetime.now(dt.UTC),
             }
 

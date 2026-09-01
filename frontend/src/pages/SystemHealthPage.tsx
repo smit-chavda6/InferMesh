@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusDot } from "@/components/StatusDot";
+import { CircuitBadge } from "@/components/badges";
 import { ErrorState, LoadingBlock } from "@/components/States";
 import { useSystemHealth } from "@/api/queries";
 import { fmtDateTime, fmtMs, fmtPct, providerLabel } from "@/lib/utils";
@@ -41,6 +42,7 @@ export function SystemHealthPage() {
                   status={d.status}
                   detail={
                     <>
+                      <CircuitBadge state={d.circuit_state} />
                       {d.latency_ms != null && <span>{fmtMs(d.latency_ms)}</span>}
                       {d.avg_latency_ms != null && <span>avg {fmtMs(d.avg_latency_ms)}</span>}
                       {d.success_rate != null && <span>{fmtPct(d.success_rate)} ok</span>}

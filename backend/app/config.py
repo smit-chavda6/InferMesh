@@ -154,6 +154,13 @@ class Settings(BaseSettings):
     # rest of the chain (vs. failing hard on the named provider only).
     fallback_on_explicit_provider: bool = True
 
+    # --- Circuit breaker -------------------------------------------------------
+    # After N consecutive provider failures the router skips that provider until
+    # a cooldown elapses, then lets one probe through. Fast failover; process-local.
+    circuit_breaker_enabled: bool = True
+    circuit_breaker_failure_threshold: int = Field(default=5, ge=1)
+    circuit_breaker_reset_seconds: float = Field(default=30.0, gt=0)
+
     @property
     def openai_enabled(self) -> bool:
         if not self.openai_api_key:

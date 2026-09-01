@@ -105,11 +105,15 @@ export interface CostBreakdownResponse {
   rows: CostBreakdownRow[];
 }
 
+export type CircuitState = "closed" | "half_open" | "open";
+
 export interface ProviderRow {
   provider: string;
   enabled: boolean;
   is_primary: boolean;
   fallback_priority: number | null;
+  circuit_state: CircuitState;
+  circuit_retry_in_seconds: number;
   requests: number;
   error_rate: number;
   fallback_count: number;
@@ -223,6 +227,7 @@ export interface SystemHealth {
       latency_ms?: number;
       success_rate?: number | null;
       avg_latency_ms?: number | null;
+      circuit_state?: CircuitState;
       checked_at: string;
     }
   >;

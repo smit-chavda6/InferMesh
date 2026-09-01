@@ -16,6 +16,7 @@ from app.api.routes.projects import router as projects_router
 from app.api.routes.requests import router as requests_router
 from app.auth import AdminAuth
 from app.cache import ChatCache, Embedder
+from app.circuit_breaker import CircuitBreaker
 from app.config import Settings, get_settings
 from app.db.session import Database
 from app.errors import register_exception_handlers
@@ -39,7 +40,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.settings = settings
         app.state.registry = ProviderRegistry(settings)
-        app.state.router = Router(app.state.registry, settings)
+        app.state.circuit_breaker = CircuitBreaker(
+            failure_threshold=settings.circuit_breaker_failure_threshold,
+            reset_seconds=settings.circuit_breaker_reset_seconds,
+        )
+        app.state.router = Router(app.state.registry, settings, breaker=app.state.circuit_breaker)
         app.state.db = Database(settings)
         app.state.pricing = get_pricing_table()
         app.state.recorder = UsageRecorder(
