@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/overlays";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState, ErrorState, LoadingBlock } from "@/components/States";
+import { useToast } from "@/hooks/useToast";
 import { useCreateProject, useProjects, useRevokeProject, useRotateKey } from "@/api/queries";
 import type { CreatedProject } from "@/api/types";
 import { fmtInt, fmtRelative, fmtUsd } from "@/lib/utils";
@@ -77,6 +78,7 @@ export function ProjectsPage() {
 
 function CreateProjectDialog({ onCreated }: { onCreated: (p: CreatedProject) => void }) {
   const create = useCreateProject();
+  const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [limit, setLimit] = useState(60);
@@ -104,7 +106,10 @@ function CreateProjectDialog({ onCreated }: { onCreated: (p: CreatedProject) => 
                   setOpen(false);
                   setName("");
                   onCreated(p);
+                  toast({ tone: "ok", title: "Project created", description: p.name });
                 },
+                onError: () =>
+                  toast({ tone: "err", title: "Couldn't create the project" }),
               },
             );
           }}
@@ -166,6 +171,7 @@ function RowActions({
 }) {
   const rotate = useRotateKey();
   const revoke = useRevokeProject();
+  const { toast } = useToast();
   const [confirm, setConfirm] = useState<null | "rotate" | "revoke">(null);
 
   return (
@@ -197,7 +203,9 @@ function RowActions({
                   onSuccess: (p) => {
                     setConfirm(null);
                     onRotated(p);
+                    toast({ tone: "ok", title: "Key rotated", description: name });
                   },
+                  onError: () => toast({ tone: "err", title: "Couldn't rotate the key" }),
                 })
               }
             >
@@ -231,7 +239,15 @@ function RowActions({
               size="sm"
               variant="danger"
               disabled={revoke.isPending}
-              onClick={() => revoke.mutate(id, { onSuccess: () => setConfirm(null) })}
+              onClick={() =>
+                revoke.mutate(id, {
+                  onSuccess: () => {
+                    setConfirm(null);
+                    toast({ tone: "ok", title: "Project revoked", description: name });
+                  },
+                  onError: () => toast({ tone: "err", title: "Couldn't revoke the project" }),
+                })
+              }
             >
               {revoke.isPending && <Loader2 className="size-4 animate-spin" />}
               Revoke

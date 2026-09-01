@@ -106,6 +106,7 @@ test.describe("§31 dashboard journey", () => {
 
     const reveal = page.getByRole("dialog");
     await expect(reveal.getByText(/^sk-gw-/)).toBeVisible();
+    await expect(page.getByRole("status")).toContainText("Project created");
     await reveal.getByRole("button", { name: "Done" }).click();
 
     const row = page.getByRole("row", { name: new RegExp(unique) });
