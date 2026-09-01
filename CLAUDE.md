@@ -17,21 +17,26 @@ observability dashboard. Continuity across sessions depends on three files:
 reliability → persistence/cost → SSE streaming → Redis rate-limiting + caching →
 production hardening → dashboard backend APIs → seed script → React/TS dashboard
 UI → Azure AI Foundry provider → **polish & testing**). The build is finished;
-there is no "next phase" — further work is maintenance or new feature requests.
+"next phase" no longer applies. Since then: maintenance + feature work —
+see **PROGRESS.md § "Post-build improvements"** (new logo, login rework,
+sign-out fix, Prometheus `/metrics` + `/v1/version`, per-provider **circuit
+breaker**, dashboard Docker image + `docker compose --profile full`, route-level
+code splitting, toasts, CSV export). Pushed to `github.com/smit-chavda6/InferMesh`.
 
 - **Backend** (`backend/`): FastAPI async gateway, live-verified against the Azure
   + Gemini keys in `backend/.env`. **Four** providers (`openai`/azure,
   `anthropic`, `gemini`, `azure_foundry` — the Azure AI Model Inference `/models`
-  API, distinct from `OPENAI_MODE=azure`). `scripts/seed.py` fills the DB with
-  ~100k realistic rows. Gate: `uv run ruff check . && uv run ruff format --check .
-  && uv run mypy && uv run pytest` → **156 passed / 8 skipped**.
+  API, distinct from `OPENAI_MODE=azure`). Router: retry/backoff → fallback chain
+  → circuit breaker. `scripts/seed.py` fills the DB with ~100k realistic rows.
+  Gate: `uv run ruff check . && uv run ruff format --check . && uv run mypy &&
+  uv run pytest` → **169 passed / 8 deselected** (`-m "not live"` in CI).
 - **Frontend** (`frontend/`, Vite + Tailwind v4 + TanStack Query + Recharts +
   Radix; branded **InferMesh**): every §6–§24 page on a real §27 endpoint through
-  a thin typed client. Gate: `npx tsc -b --noEmit && npm run build && npm run lint
-  && npm run test` (**28 Vitest** unit/component tests). E2E: `npx playwright
-  test` (**25** — §31 journey + per-page axe a11y + perf + responsive), needs
-  Postgres/Redis up and the DB seeded. Dev: `npm run dev` (proxies `/v1` +
-  `/health` → `127.0.0.1:8000`).
+  a thin typed client; route-level code-split. Gate: `npx tsc -b --noEmit &&
+  npm run build && npm run lint && npm run test` (**43 Vitest** tests). E2E:
+  `npx playwright test` (**28** — §31 journey + per-page axe a11y + perf +
+  responsive), needs Postgres/Redis up and the DB seeded. Dev: `npm run dev`
+  (proxies `/v1` + `/health` → `127.0.0.1:8000`).
 - **CI** (`.github/workflows/ci.yml`): `backend`, `frontend`, `e2e`,
   `docker-build` jobs.
 - Measured: Overview time-to-first-KPI ~0.55 s and Requests next-page ~0.15 s

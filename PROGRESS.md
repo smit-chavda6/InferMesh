@@ -1007,3 +1007,46 @@ polish, and measured perf against the 100k-row seed. Both gates green.**
   local 100 002-row DB.
 - Bundle is still one chunk. `React.lazy` per route would trim first load but the
   measured TTI already beats the target, so it's left as a noted future option.
+
+---
+
+## Post-build improvements (not phases — maintenance / feature work)
+
+All verified with the full gate (backend ruff+mypy+pytest, frontend
+tsc+oxlint+vitest+Playwright) and committed one change at a time.
+
+- **`feat(brand)` / login rework** — new InferMesh mark (a routing-hub glyph) as
+  `src/components/Logo.tsx` + full favicon set (svg, 32/192 png, apple-touch,
+  `site.webmanifest`); the login screen was reworked to a centered console card
+  with a live "Operational" pill, show/hide password, and a submit progress bar.
+- **`fix(auth)` sign-out** — `useLogout` now `window.location.assign("/")` after
+  `qc.clear()` (a bare clear left the mounted `useAuthMe` observer holding the
+  stale user, so the gate never flipped to the login screen). `App` gate
+  simplified to `me.data ? dashboard : me.isError ? login : spinner`.
+- **`feat(metrics)`** — Prometheus `GET /metrics` (`app/metrics.py`, own
+  registry): `gateway_requests_total`, `gateway_request_latency_seconds`,
+  `gateway_tokens_total`, `gateway_provider_errors_total`, `gateway_retries_total`,
+  `gateway_cache_events_total`, `gateway_circuit_breaker_state`. Folded in from
+  `UsageRecorder.record`. `METRICS_ENABLED` / `METRICS_TOKEN`. Plus
+  `GET /v1/version` (version + `GIT_SHA` / `BUILD_TIME` + `started_at`).
+- **`feat(reliability)` circuit breaker** — `app/circuit_breaker.py`
+  (closed/open/half-open, injectable clock). Router skips an open provider
+  (attempt outcome `circuit_open`); success/failure recorded per provider.
+  `CIRCUIT_BREAKER_*` config. `circuit_state` on `/v1/providers` +
+  `/v1/system/health`; `CircuitBadge` on the Providers + System Health pages.
+- **`feat(deploy)`** — `frontend/Dockerfile` (node build → nginx serving the SPA
+  + proxying `/v1` `/health` `/metrics`, SSE-friendly, security headers) +
+  `frontend/nginx.conf`. `docker compose --profile full up` runs the dashboard
+  on `:8080`. **Fixed a latent bug**: compose `env_file` pointed at a stale root
+  `./.env` copy instead of `./backend/.env` — the canonical secrets file.
+- **`perf(frontend)` code splitting** — every page is `React.lazy` behind a
+  per-route `<Suspense>` skeleton; main bundle 843 kB → 305 kB, Recharts (422 kB)
+  is its own on-demand chunk.
+- **`feat` theme following** — `useTheme` distinguishes an explicit stored choice
+  from "follow the OS" and tracks live `prefers-color-scheme` changes until the
+  user toggles.
+- **`feat(ui)` toasts** — dependency-free `ToastProvider` + `useToast`
+  (`src/hooks/useToast.ts`); wired into project create / rotate / revoke.
+- **`feat` CSV export** — `GET /v1/requests/export.csv` (same filters, 50k cap,
+  attachment); "CSV" button on the Requests explorer.
+- **README** — architecture Mermaid diagram + `docs/screenshots/` gallery.

@@ -10,6 +10,51 @@ The build is complete (12 phases — see [`PROGRESS.md`](./PROGRESS.md)). Spec a
 phase definitions live in [`docs/SPEC.md`](./docs/SPEC.md); a new session starts
 from [`CLAUDE.md`](./CLAUDE.md).
 
+![Dashboard overview](docs/screenshots/overview.png)
+
+## What's in it
+
+- **Gateway** — one OpenAI-compatible `POST /v1/chat/completions` (SSE too) in
+  front of four providers, with per-provider retry + exponential backoff,
+  fallback across an ordered chain, a **per-provider circuit breaker**, exact +
+  semantic response caching, and Redis sliding-window rate limiting. Every
+  response carries a `gateway` metadata object (provider used, cache status,
+  fallback chain, retries, latency, cost).
+- **Observability** — every call writes one `requests` row; the dashboard's
+  ~15 pages are pure SQL aggregation over it (`percentile_cont`, `date_bin`,
+  window functions). Prometheus metrics at **`GET /metrics`**; build provenance
+  at `GET /v1/version`.
+- **Dashboard** — React 19 / Vite / Tailwind v4, route-level code-split, dark +
+  light, WCAG 2 AA (0 critical/serious axe violations), ⌘K palette, CSV export.
+- **Ops** — `docker compose --profile full up` runs the whole stack (nginx +
+  SPA + gateway + Postgres + Redis); CI runs backend / frontend / Playwright E2E
+  / image builds.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  client["Client / SDK"] -->|"POST /v1/chat/completions"| gw
+  browser["Dashboard (SPA)"] -->|"admin session · /v1/*"| gw
+
+  subgraph gw["Gateway (FastAPI)"]
+    direction TB
+    mw["request-id · auth · rate limit"] --> cache["cache lookup<br/>(exact + pgvector semantic)"]
+    cache -->|miss| router["Router<br/>retry · backoff · fallback · circuit breaker"]
+    router --> adapters["provider adapters"]
+    router --> rec["UsageRecorder → requests row + /metrics"]
+  end
+
+  adapters --> openai["OpenAI / Azure OpenAI"]
+  adapters --> anthropic["Anthropic"]
+  adapters --> gemini["Gemini"]
+  adapters --> foundry["Azure AI Foundry"]
+
+  gw --- pg[("PostgreSQL<br/>+ pgvector")]
+  gw --- redis[("Redis<br/>cache · rate limit · JWT denylist")]
+  gw --> prom{{"Prometheus /metrics"}}
+```
+
 ## Repo layout
 
 ```
@@ -18,6 +63,7 @@ frontend/           React + TypeScript dashboard — Vite, Tailwind v4, TanStack
 docker-compose.yml  local infra (postgres + redis) + backend + optional seed service
 .env.example        every environment variable the stack reads
 docs/SPEC.md         verbatim project spec (§30 phase list, Definitions of Done)
+docs/screenshots/    dashboard screenshots used in this README
 PROGRESS.md          per-phase build log (plan / done / deviations / verification)
 ```
 
@@ -189,7 +235,21 @@ a `docker build` of the backend image.
 - Dashboard **Overview → first KPI value rendered: ~0.55 s** (target was sub-2s).
 - **Requests explorer next page (server-paginated over 100k rows): ~0.15 s.**
 - Backend aggregation endpoints: **< ~80 ms server-side**.
-- Production frontend bundle: **~246 kB gzip** JS, ~6.5 kB gzip CSS.
+- Production frontend bundle: main chunk **~95 kB gzip** after route-level code
+  splitting (Recharts is a separate on-demand chunk).
+
+---
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Requests explorer + detail drawer](docs/screenshots/requests-drawer.png) | ![Providers](docs/screenshots/providers.png) |
+| **Requests explorer** — filters, sort, CSV export, routing-chain drawer | **Providers** — health, circuit state, routing config |
+| ![Cost analytics](docs/screenshots/costs.png) | ![System health](docs/screenshots/system-health.png) |
+| **Cost analytics** — trend + breakdown by model / provider / project | **System health** — gateway + every dependency, circuit states |
+
+The sign-in screen: ![Login](docs/screenshots/login.png)
 
 ---
 
