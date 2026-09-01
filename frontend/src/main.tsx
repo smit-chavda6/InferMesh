@@ -7,6 +7,18 @@ import { ApiError } from "@/api/client";
 import App from "./App";
 import "./index.css";
 
+// Apply the saved theme before first paint so every screen — including the
+// pre-auth login page, which never mounts AppLayout/useTheme — is themed and
+// there's no light-mode flash. AppLayout's useTheme still owns the toggle.
+try {
+  const saved = localStorage.getItem("gw-theme");
+  const dark = saved ? saved === "dark" : !window.matchMedia?.("(prefers-color-scheme: light)").matches;
+  document.documentElement.classList.toggle("dark", dark);
+  document.documentElement.style.colorScheme = dark ? "dark" : "light";
+} catch {
+  /* private mode / storage disabled — fall back to the CSS default (dark) */
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

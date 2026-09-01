@@ -15,29 +15,38 @@ const PAGES: [string, RegExp][] = [
   ["/system", /System Health/],
 ];
 
+async function assertNoBlockingViolations(page: import("@playwright/test").Page, label: string) {
+  await page.waitForLoadState("networkidle");
+  const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+  const blocking = results.violations.filter(
+    (v) => v.impact === "critical" || v.impact === "serious",
+  );
+  if (blocking.length) {
+    console.log(
+      JSON.stringify(
+        blocking.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.length })),
+        null,
+        2,
+      ),
+    );
+  }
+  expect(blocking, `${blocking.length} critical/serious a11y violations on ${label}`).toEqual([]);
+}
+
 for (const [path, heading] of PAGES) {
   test(`no critical/serious axe violations: ${path}`, async ({ page }) => {
     await page.goto(path);
     await expect(page.getByRole("heading", { name: heading, level: 1 })).toBeVisible();
-    // let charts/tables settle
-    await page.waitForLoadState("networkidle");
-
-    const results = await new AxeBuilder({ page })
-      .withTags(["wcag2a", "wcag2aa"])
-      .analyze();
-
-    const blocking = results.violations.filter(
-      (v) => v.impact === "critical" || v.impact === "serious",
-    );
-    if (blocking.length) {
-      console.log(
-        JSON.stringify(
-          blocking.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.length })),
-          null,
-          2,
-        ),
-      );
-    }
-    expect(blocking, `${blocking.length} critical/serious a11y violations on ${path}`).toEqual([]);
+    await assertNoBlockingViolations(page, path);
   });
 }
+
+// the login screen — a fresh, unauthenticated context so the auth gate shows it
+test.describe("login screen", () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+  test("no critical/serious axe violations: /login", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Sign in to InferMesh", level: 1 })).toBeVisible();
+    await assertNoBlockingViolations(page, "/login");
+  });
+});
